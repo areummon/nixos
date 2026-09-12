@@ -20,6 +20,7 @@
       outputs.overlays.additions
       outputs.overlays.modifications
       outputs.overlays.unstable-packages
+      inputs.opencode.overlays.default
 
       # neovim-nightly-overlay.overlays.default
 
@@ -42,6 +43,18 @@
       flake-registry = "";
       # Workaround for https://github.com/NixOS/nix/issues/9574
       nix-path = config.nix.nixPath;
+
+      # Binary caches
+      substituters = [
+        "https://cache.nixos.org"
+        "https://hyprland.cachix.org"
+        "https://nix-community.cachix.org"
+      ];
+      trusted-public-keys = [
+        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+        "hyprland.cachix.org-1:a7pgxzMz7+chwVL3/pzj6jIBMioiJM7ypFP8PwtkuGc="
+        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+      ];
     };
     # disable channels
     channel.enable = false;
@@ -129,7 +142,6 @@
       openssh.authorizedKeys.keys = [
         # TODO: Add your SSH public key(s) here, if you plan on using SSH to connect
       ];
-      packages = with pkgs; [];
       linger = true;
     };
   };
@@ -155,9 +167,8 @@
     package = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
     portalPackage = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-hyprland;
   };
-  environment.sessionVariables.NIXOS_OZONE_WL = "1";
-
   home-manager = {
+    useGlobalPkgs = true;
     useUserPackages = true;
     extraSpecialArgs = {inherit inputs outputs;};
     users = {
@@ -231,8 +242,6 @@
 
   # Flatpak configuration
   services.flatpak.enable = true;
-  fonts.fontDir.enable = true;
-
   # Font configuration
   fonts.packages = with pkgs.unstable; [
     noto-fonts-cjk-sans

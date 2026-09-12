@@ -16,70 +16,46 @@
     ../desktop
   ];
 
-  nixpkgs = {
-    overlays = [
-      # Add overlays your own flake exports (from overlays and pkgs dir):
-      outputs.overlays.additions
-      outputs.overlays.modifications
-      outputs.overlays.unstable-packages
-      inputs.opencode.overlays.default
-
-      # neovim-nightly-overlay.overlays.default
-
-      # (final: prev: {
-      #   hi = final.hello.overrideAttrs (oldAttrs: {
-      #     patches = [ ./change-hello-to-hi.patch ];
-      #   });
-      # })
-    ];
-    config = {
-      #allowUnfree = true;
-    };
-  };
-
   home = {
     username = "moka";
     homeDirectory = "/home/moka";
   };
 
-  home.packages = with pkgs.unstable;
-    [
-      papirus-icon-theme
-      anki
-      signal-cli
-      brightnessctl
-      bluez-tools
-      btop
-      fzf
-      wl-clipboard
-      # util
-      zip
-      xz
-      unzip
-      bat
-      xdotool
-      pstree
-      rclone
-      zathura
-      sioyek
-      hyprshot
-      # flatpak
-      libsecret
-      # fonts
-      font-awesome
-      powerline-fonts
-      powerline-symbols
-      iosevka
-      fira-code-symbols
-      nerd-fonts.jetbrains-mono
-      nerd-fonts.fira-code
-      nerd-fonts.symbols-only
-      nerd-fonts.meslo-lg
-      nerd-fonts.commit-mono
-    ]
-    ++ (with pkgs; [
-      opencode
-    ]);
+  home.packages = with pkgs.unstable; [
+    anki
+    signal-cli
+    brightnessctl
+    bluez-tools
+    btop
+    wl-clipboard
+    # util
+    zip
+    xz
+    unzip
+    bat
+    xdotool
+    pstree
+    rclone
+    zathura
+    sioyek
+    hyprshot
+    # flatpak
+    libsecret
+    # fonts
+    font-awesome
+    powerline-fonts
+    powerline-symbols
+    iosevka
+    fira-code-symbols
+    nerd-fonts.jetbrains-mono
+    nerd-fonts.fira-code
+    nerd-fonts.symbols-only
+    nerd-fonts.meslo-lg
+    nerd-fonts.commit-mono
+    playerctl
+    libnotify
+    proton-vpn
+  ];
 
   home.sessionVariables = {
     NIXOS_OZONE_WL = "1";

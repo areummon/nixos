@@ -12,6 +12,7 @@
     shellAliases = {
       update = "sudo nixos-rebuild switch";
       sd = "cd ~ && cd \$(fd --type d | fzf)";
+      codex-opencode = "codex --profile opencode-delegation";
     };
     history = {
       size = 10000;

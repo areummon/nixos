@@ -29,9 +29,6 @@
       -------------------
 
       hl.on("hyprland.start", function()
-          hl.exec_cmd("hypridle")
-          hl.exec_cmd("hyprpaper")
-          hl.exec_cmd("hyprsunset")
           hl.exec_cmd("waybar")
           hl.exec_cmd("fcitx5 -d")
           hl.exec_cmd("sleep 1 && hyprctl setcursor McMojave 40")
@@ -478,6 +475,19 @@
           mainMod .. " + SHIFT + S",
           hl.dsp.window.move({
               workspace = "special:magic",
+          })
+      )
+
+      -- Proton VPN scratchpad: hide/show without terminating the app
+      hl.bind(
+          mainMod .. " + O",
+          hl.dsp.workspace.toggle_special("protonvpn")
+      )
+
+      hl.bind(
+          mainMod .. " + SHIFT + O",
+          hl.dsp.window.move({
+              workspace = "special:protonvpn",
           })
       )
 

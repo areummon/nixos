@@ -14,9 +14,21 @@
       "${config.home.homeDirectory}/.secrets/signal.env"
     ];
     settings = {
-      model.default = "meituan/longcat-2.0:free";
-      model.provider = "nous";
+      model.default = "gpt-5.6-luna";
+      model.provider = "openai-codex";
       fallback_providers = [
+        {
+          provider = "openai-codex";
+          model = "gpt-5.6-sol";
+        }
+        {
+          provider = "openrouter";
+          model = "deepseek/deepseek-v4.1-flash";
+        }
+        {
+          provider = "nous";
+          model = "meituan/longcat-2.0:free";
+        }
         {
           provider = "nous";
           model = "stepfun/step-3.7-flash:free";
@@ -24,10 +36,6 @@
         {
           provider = "openrouter";
           model = "poolside/laguna-s-2.1:free";
-        }
-        {
-          provider = "openrouter";
-          model = "z-ai/glm-5.3-flash";
         }
       ];
     };
