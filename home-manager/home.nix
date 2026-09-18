@@ -23,6 +23,7 @@
 
   home.packages = with pkgs.unstable; [
     anki
+    obsidian
     signal-cli
     brightnessctl
     bluez-tools
@@ -60,6 +61,7 @@
   home.sessionVariables = {
     NIXOS_OZONE_WL = "1";
     HYPRSHOT_DIR = "${config.home.homeDirectory}/Pictures/Screenshots";
+    OBSIDIAN_VAULT_PATH = "${config.home.homeDirectory}/Documents/study_vault";
   };
 
   # NIX_XDG_DESKTOP_PORTAL_DIR to the user profile (home-manager issue
