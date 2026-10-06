@@ -16,9 +16,9 @@
 
     [features.network_proxy]
     enabled = true
-    domains = {
-      "openrouter.ai" = "allow",
-      "api.openrouter.ai" = "allow"
-    }
+
+    [features.network_proxy.domains]
+    "openrouter.ai" = "allow"
+    "api.openrouter.ai" = "allow"
   '';
 }

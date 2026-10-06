@@ -194,9 +194,9 @@
   systemd.services.configure-sound-leds = rec {
     wantedBy = ["sound.target"];
     after = wantedBy;
-    serviceConfig.type = "oneshot";
-    # -f guard: don't fail the boot unit if the sysfs path doesn't exist
-    # (e.g. kernel/codec changes). Restart on resume in case state resets.
+    serviceConfig.Type = "oneshot";
+    # -w guard: don't fail the boot unit if the sysfs path doesn't exist
+    # (e.g. kernel/codec changes).
     script = ''
       if [ -w /sys/class/sound/ctl-led/mic/mode ]; then
         echo off > /sys/class/sound/ctl-led/mic/mode
