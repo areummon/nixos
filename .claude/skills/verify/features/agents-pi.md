@@ -2,7 +2,7 @@
 
 `pi` (pi-coding-agent from unstable) runs with an OpenAI-Codex default model, pinned npm/git packages (web access, permission system, sandbox, pstack), a path/bash permission policy, and the local optchat-memory extension that keeps durable memory under `~/.local/share/pi/optchat-memory/default`.
 
-Owner: `desktop/apps/agents/pi.nix`. Extension source: `desktop/apps/agents/pi-extensions/optchat-memory/`. `pi-extensions/pstack/` is a vendored reference copy that nothing in Nix uses. Pi loads pstack from the pinned `git:` package.
+Owner: `desktop/apps/agents/pi.nix`. Extension source: `desktop/apps/agents/pi-extensions/optchat-memory/`. Pi loads pstack from the pinned `git:` package.
 
 ## Sub-features
 
