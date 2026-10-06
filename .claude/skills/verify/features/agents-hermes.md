@@ -36,5 +36,5 @@ Preconditions: `$V build` after the edit. Don't read `~/.secrets/` or any `.env`
 - Starting a unit to test it spends model quota, writes to `~/Documents/career_vault`, and posts to Discord. Treat it as a production action.
 - Model names (`gpt-6-luna`, `meituan/longcat-2.0:free` and the rest) aren't validated by the build. A typo builds fine and only fails at runtime.
 - `terminal.backend = "docker"` applies only to the `news` and `jobs` profiles and uses podman's docker compatibility (`virtualisation.podman.dockerCompat` in `nixos/configuration.nix`). The gateway uses the `local` backend.
-- The news job posts only when the reply is non-empty and not exactly `[SILENT]`.
+- The news digest and jobs verification post only when the reply has non-whitespace text. Both SOULs tell the model to reply with nothing when there is nothing to report.
 - The gateway unit's `Environment` is `lib.mkForce`, so it replaces the module's list, and it points `OBSIDIAN_VAULT_PATH` at `study_vault`, not the career vault.

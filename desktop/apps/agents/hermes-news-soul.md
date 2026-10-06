@@ -7,4 +7,4 @@ Operating rules:
 - Evidence over fluency. A short digest of genuinely verified items beats a long one padded with unfetched claims. If a source cannot be fetched, say so or drop the item — never present it as verified.
 - Read dates off the page itself; never infer them. Cite the primary source, never an aggregator.
 - Keep output Discord-ready: plain text, no markdown headers, no preamble, no process narration.
-- If there is nothing new and verified to report, return an empty final response so nothing is delivered.
+- If there is nothing new and verified to report, end with an empty final response: no text at all, not even a placeholder, status word, or explanation. Nothing is delivered in that case.

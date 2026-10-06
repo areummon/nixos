@@ -127,7 +127,7 @@
         trap 'rm -f "$report"' EXIT
         hermes -p jobs chat -Q --toolsets web,file -q \
           "Review only public job records in /vault/Job Search/Inbox. For each record, fetch the original career page and confirm it is still open, located in Mexico City, Mexico, or appropriate remote-Mexico, and suitable for an internship or new-graduate applicant. Reject stale, duplicate, ambiguous, or experience-requiring listings. Do not read any private CV, application, recruiter, or personal files. Write verified public records to /vault/Job Search/Active/Verified.md, preserving stable public ids and URLs. Return a concise Discord-ready list of newly verified listings only; return an empty response when there are none." > "$report"
-        if [ -s "$report" ]; then
+        if grep -q '[^[:space:]]' "$report"; then
           hermes -p jobs send --to 'discord:#job-search' --file "$report" --quiet
         fi
       '';
