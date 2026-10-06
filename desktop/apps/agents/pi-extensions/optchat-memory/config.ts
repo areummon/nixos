@@ -25,10 +25,6 @@ function bool(env: string, fileValue: unknown, fallback = false): boolean {
   return fallback;
 }
 
-function strings(fileValue: unknown): string[] | undefined {
-  return Array.isArray(fileValue) ? fileValue.filter((v): v is string => typeof v === "string" && v.length > 0) : undefined;
-}
-
 export function config(): Config {
   const home = process.env.HOME ?? "/tmp";
   const xdg = process.env.XDG_DATA_HOME ?? join(home, ".local", "share");
@@ -43,13 +39,10 @@ export function config(): Config {
     capChars: num("PI_OPTCHAT_CAP_CHARS", file.capChars, 30000),
     replaceContext: bool("PI_OPTCHAT_REPLACE_CONTEXT", file.replaceContext, false),
     disableModelCompactor: bool("PI_OPTCHAT_DISABLE_MODEL_COMPACTOR", file.disableModelCompactor, false),
-    // A cheap but competent model (§4.2, §10), e.g. "openai/gpt-6-luna".
+    // A cheap but competent model (§4.2, §10), e.g. "anthropic/claude-sonnet-5-5".
     compactorModel: process.env.PI_OPTCHAT_COMPACTOR_MODEL || file.compactorModel || undefined,
     compactorThinking: process.env.PI_OPTCHAT_COMPACTOR_THINKING || file.compactorThinking || undefined,
     // Reasoning tokens count against this, so leave room beyond the 512-byte line.
     compactorMaxTokens: num("PI_OPTCHAT_COMPACTOR_MAX_TOKENS", file.compactorMaxTokens, 16000),
-    subagentModel: process.env.PI_OPTCHAT_SUBAGENT_MODEL || file.subagentModel || undefined,
-    subagentTools: strings(file.subagentTools),
-    subagentExtensions: strings(file.subagentExtensions) ?? [],
   };
 }

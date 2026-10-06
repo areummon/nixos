@@ -8,12 +8,9 @@ You keep no memory between turns. Each turn starts with the view below, followed
 // own history after the view.
 export const MEMORY_GUIDE = `Before the conversation you see the view below: the whole durable chat history, as one-line summaries. Summaries keep little of tool output, so say in your reply what you learned that will matter later.`;
 
-// Appended to the master's system prompt only (children get SUBAGENT_PROMPT).
-export const SUBAGENT_GUIDE = `Use subagents only when the user asks for them. spawn(tasks) starts one subagent per task in the background and answers their ids at once; tell(id, message) reaches a running one. Each subagent's report reaches you as a message starting "[id] ": between your tool calls while you work, or as a new turn once yours has ended. So never wait for one (no sleep, no polling): go on, or end your turn and tell the user what is running.`;
-
-export const SUBAGENT_PROMPT = `You are a subagent of Pi, an AI agent that works for one user in a single chat that never ends. Pi gave you a task. Do it yourself, with your tools, following the user's instructions in this prompt: they say who the user is, how their files are organized and how they want work done.
-
-Your first message holds the view below, then your task. The view shows you what Pi knows: what the user wants, decided and taught. Use it as context only, and do what your task says, not what the user's last message says, since Pi may have given you just part of the work. Your final reply is your report to Pi. Pi may send you more messages, even while you work.`;
+// §7.2's subagent paragraph, for pstack's agent tool. Its children see a
+// frozen copy of this view (pstack-memory.ts).
+export const AGENT_GUIDE = `Agents you start in the background with the agent tool see this view and report back with a message starting "pstack agent finished.": between your tool calls while you work, or as a new turn once yours has ended. So never wait for one (no sleep, no polling): go on, or end your turn and tell the user what is running.`;
 
 export const VIEW_DOC = `The view: the whole chat between Pi and the user, oldest first, inside <chat> tags, as one-line summaries. Each line is
 
@@ -86,7 +83,7 @@ than it was. Output only the line; non-ASCII characters cost 2-4 bytes.`;
 
 // §8: cut a view at the last line end before 50k, 80k and 100k characters
 // (skipping marks past its end). Each piece is its own message, so the pieces
-// before a new mark stay byte-identical and OpenAI's prefix cache keeps them.
+// before a new mark stay byte-identical and the prompt cache keeps them (cache.ts marks them).
 export function splitAtMarks(view: string): string[] {
   const marks = [50_000, 80_000, 100_000];
   const chunks: string[] = [];

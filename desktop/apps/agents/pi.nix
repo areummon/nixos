@@ -1,6 +1,7 @@
 {
   config,
   pkgs,
+  lib,
   ...
 }: let
   optchatMemoryDir = "${config.xdg.dataHome}/pi/optchat-memory/default";
@@ -46,16 +47,44 @@ in {
   # carderne/pi-sandbox needs bwrap, rg, and socat on PATH on Linux.
   home.packages = with pkgs.unstable; [pi-coding-agent nodejs bubblewrap ripgrep socat];
 
+  # Fix the MCP SDK advisory without downgrading Pi plugins. The Bash parser
+  # uses bundled WASM, so its native install script stays explicitly denied.
+  home.activation.piNpmPolicy = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    if [ -z "''${DRY_RUN_CMD:-}" ]; then
+      export PATH="${pkgs.unstable.nodejs}/bin:$PATH"
+      piNpmDir="${config.home.homeDirectory}/.pi/agent/npm"
+      piPolicyChanged=$(node ${./pi-npm-policy.mjs} "$piNpmDir/package.json")
+      if [ -n "$piPolicyChanged" ] || ! node -e 'process.exit(require(process.argv[1]).version === "1.32.1" ? 0 : 1)' "$piNpmDir/node_modules/@modelcontextprotocol/sdk/package.json" 2>/dev/null; then
+        npm install --prefix "$piNpmDir" --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      fi
+      # pi-anthropic-oauth ignores Pi's onPayload hook, which drops OptChat's
+      # view cache breakpoints, so every turn rewrites the whole view.
+      oauthDir="$piNpmDir/node_modules/pi-anthropic-oauth"
+      if [ -f "$oauthDir/src/stream.ts" ] && ! grep -q "options?.onPayload" "$oauthDir/src/stream.ts"; then
+        if ${pkgs.patch}/bin/patch --dry-run -s -d "$oauthDir" -p1 < ${./pi-anthropic-oauth-onpayload.patch} >/dev/null; then
+          ${pkgs.patch}/bin/patch -s -d "$oauthDir" -p1 < ${./pi-anthropic-oauth-onpayload.patch}
+        else
+          echo "pi: pi-anthropic-oauth onPayload patch no longer applies; OptChat view caching stays off" >&2
+        fi
+      fi
+    fi
+  '';
+
   # Preserve Pi's default coding tools and add its built-in codemode tool.
   home.file.".pi/agent/settings.json".text = builtins.toJSON {
-    defaultProvider = "openai-codex";
-    defaultModel = "gpt-6.1-sol";
+    defaultProvider = "anthropic";
+    defaultModel = "claude-opus-5-5";
     defaultThinkingLevel = "medium";
     defaultTools = ["+codemode"];
+    # OptChat spec §8: no cache keep-alive pings; a long tool rewrites its entries.
+    cacheWarming = "off";
     packages = [
       "npm:pi-web-access@0.35.0"
       "npm:@gotgenes/pi-permission-system@39.0.3"
       "npm:pi-sandbox@0.7.0"
+      # Overrides the "anthropic" provider's transport and OAuth, retaining
+      # Pi's model catalog. Chat and memory calls use this plugin's handler.
+      "npm:pi-anthropic-oauth@0.3.1"
       # Maintained Pi port; pin the reviewed revision for reproducible updates.
       "git:github.com/michael-denyer/pstack-claude@4d4e159a77aec356ae6be320f281808aab0d25ca"
     ];
@@ -80,19 +109,8 @@ in {
     replaceContext = true;
     disableModelCompactor = false;
     # Cheap but competent compactor (spec §4.2/§10); the chat model stays your choice.
-    compactorModel = "openai-codex/gpt-6-luna";
+    compactorModel = "anthropic/claude-sonnet-5-5";
     compactorThinking = "medium";
-    # Subagents (spawn/tell) run in-process with only these extensions. The
-    # Permission and sandbox approval dialogs forward to the parent's UI.
-    # Children fail closed unless sandbox startup succeeds, and expose only
-    # read/zoom/date/codemode. Shell commands and edits stay with the parent.
-    # These restrictions apply to OptChat spawn/tell, not pstack's subprocess
-    # agent tool. Pstack children load global Pi packages and cancel UI dialogs.
-    subagentTools = ["read" "zoom" "date" "codemode"];
-    subagentExtensions = [
-      "${config.home.homeDirectory}/.pi/agent/npm/node_modules/@gotgenes/pi-permission-system"
-      "${config.home.homeDirectory}/.pi/agent/npm/node_modules/pi-sandbox"
-    ];
   };
 
   home.sessionVariables = {

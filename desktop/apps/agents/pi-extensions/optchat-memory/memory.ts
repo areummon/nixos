@@ -1,10 +1,13 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { mkdirSync, readdirSync, readFileSync, appendFileSync, existsSync, openSync, closeSync, unlinkSync, writeFileSync, writeSync, fsyncSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { createConnection, createServer, type Server } from "node:net";
+import { promisify } from "node:util";
 import { join, dirname, basename } from "node:path";
 import type { Config, Kind, MessageRecord, NodeRecord, Part } from "./types.ts";
+import { markViewBreakpoints } from "./cache.ts";
 import { COMPACT_PROMPT, splitAtMarks } from "./prompt.ts";
-import { assertSafeImportPath, byteLen, cap, countOf, cutBytes, exactScaleLine, flatten, heuristicSummary, idOf, localDay, pow2, safeJson, startOf, textContent } from "./util.ts";
+import { assertSafeImportPath, byteLen, countOf, cutBytes, exactScaleLine, flatten, heuristicSummary, idOf, localDay, pow2, safeJson, startOf, textContent } from "./util.ts";
 
 export class OptChatMemory {
   cfg: Config;
@@ -18,6 +21,8 @@ export class OptChatMemory {
   stopped = false;
   paused = false;
   seq = Promise.resolve();
+  commits = Promise.resolve();
+  commitFailed = false;
 
   constructor(cfg: Config) { this.cfg = cfg; }
   key(l: number, i: number) { return `${l}:${i}`; }
@@ -121,7 +126,7 @@ export class OptChatMemory {
 
   // Resolves to the message's id once it is in the log.
   async log(kind: Kind, text: string, source?: string): Promise<number | undefined> {
-    text = cap(String(text ?? ""), this.cfg.capChars).trim();
+    text = String(text ?? "").trim();
     if (!text) return undefined;
     return this.enqueue(async () => {
       const rec: MessageRecord = { i: this.root.length, kind, text, size: byteLen(`${kind}: ${text}`), date: new Date().toISOString(), source };
@@ -133,6 +138,23 @@ export class OptChatMemory {
       this.ctx?.ui.setStatus("optchat", `mem ${this.root.length} msgs`);
       return rec.i;
     });
+  }
+
+  // §10: persist after each turn. Only the append-only log and tree are
+  // history; the lock, snapshots, exports and HTML stay out of the repo.
+  commit(): Promise<void> {
+    const git = (...args: string[]) => promisify(execFile)("git", ["-C", this.cfg.memoryDir, "-c", "user.name=optchat-memory", "-c", "user.email=optchat-memory@localhost", ...args]);
+    this.commits = this.commits.then(async () => {
+      await git("init", "-q");
+      await git("add", "main", "tree");
+      if (await git("diff", "--cached", "--quiet").then(() => true, () => false)) return;
+      await git("commit", "-q", "-m", `messages 0-${this.root.length - 1}`);
+    }).catch((err) => {
+      if (this.commitFailed) return;
+      this.commitFailed = true;
+      this.ctx?.ui.notify(`optchat-memory: git commit of ${this.cfg.memoryDir} failed: ${String(err)}`, "warning");
+    });
+    return this.commits;
   }
 
   appendNode(n: NodeRecord) {
@@ -225,7 +247,7 @@ export class OptChatMemory {
     return m ? new Date(m.date).toString() : `No message ${id}.`;
   }
 
-  async settle(signal?: AbortSignal, timeoutMs = 30_000, upTo = Infinity): Promise<boolean> {
+  async settle(signal?: AbortSignal, timeoutMs = Infinity, upTo = Infinity): Promise<boolean> {
     const start = Date.now();
     while (!this.settled(upTo)) {
       if (signal?.aborted || Date.now() - start > timeoutMs) return false;
@@ -393,11 +415,13 @@ export class OptChatMemory {
     const options: any = {
       maxTokens: this.cfg.compactorMaxTokens,
       sessionId: "optchat-compactor",
-      ...(this.cfg.compactorThinking ? { reasoningEffort: this.cfg.compactorThinking } : {}),
+      ...(this.cfg.compactorThinking ? { reasoning: this.cfg.compactorThinking } : {}),
+      // §8: breakpoints on the context pieces; the context is the shared prefix.
+      onPayload: (payload: unknown) => markViewBreakpoints(payload, context),
     };
     const tries: string[] = [];
     for (;;) {
-      const msg: any = await this.ctx.modelRegistry.complete(model, { messages } as any, options);
+      const msg: any = await this.ctx.modelRegistry.streamSimple(model, { messages } as any, options).result();
       if (msg?.stopReason === "error" || msg?.stopReason === "aborted") throw new Error(msg.errorMessage ?? msg.stopReason);
       const line = textContent(msg?.content).trim();
       if (!line) throw new Error("empty reply");

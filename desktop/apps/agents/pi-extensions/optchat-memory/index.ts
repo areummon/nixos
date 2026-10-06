@@ -2,8 +2,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { join } from "node:path";
 import { config } from "./config.ts";
 import { OptChatMemory } from "./memory.ts";
-import { MASTER_PROMPT, MEMORY_GUIDE, SUBAGENT_GUIDE, VIEW_DOC, splitAtMarks } from "./prompt.ts";
-import { Subagents } from "./subagents.ts";
+import { markViewBreakpoints } from "./cache.ts";
+import { AGENT_GUIDE, MASTER_PROMPT, MEMORY_GUIDE, VIEW_DOC, splitAtMarks } from "./prompt.ts";
 import { writeHtml } from "./html.ts";
 import { cap, replyText, safeJson, textContent } from "./util.ts";
 import { isPstackChild, publishSnapshot, registerPstackMemory, removePublishedSnapshot, SNAPSHOT_ENV } from "./pstack-memory.ts";
@@ -18,8 +18,7 @@ export default function (pi: ExtensionAPI) {
   }
   const mem = new OptChatMemory(config());
 
-  // zoom/date read the one live memory; subagents get the same definitions.
-  const memoryTools = () => [
+  const memoryTools = [
     {
       name: "zoom",
       label: "Zoom Memory",
@@ -39,14 +38,16 @@ export default function (pi: ExtensionAPI) {
       },
     },
   ];
-  const subagents = new Subagents(pi, mem, memoryTools);
+  // Log index of a pstack report that starts a new turn: that turn's view ends
+  // before it (§7: the view is rendered before the new message is logged).
+  let reportFrom: number | undefined;
 
   pi.on("session_start", async (_event, ctx) => {
     await mem.start(ctx as ExtensionContext);
     publishSnapshot(mem);
   });
   pi.on("session_shutdown", async () => {
-    await subagents.shutdown();
+    await mem.commit();
     mem.shutdown();
     removePublishedSnapshot(mem);
   });
@@ -57,17 +58,20 @@ export default function (pi: ExtensionAPI) {
     if (m.role === "user") await mem.log("user", textContent(m.content), "message_end");
     else if (m.role === "assistant") await mem.log("talk", replyText(m.content), "message_end");
     else if (m.role === "custom" && m.customType === "pstack-agent") {
-      await mem.log("work", textContent(m.content), "pstack-agent");
+      // §9: a report is a user message starting "[id] "; the compactor tags it work:.
+      const i = await mem.log("user", `[${m.details?.agentId ?? "agent"}] ${textContent(m.content)}`, "pstack-agent");
+      // An idle report starts a run without before_agent_start; its view ends before it.
+      if (!turn && i !== undefined) reportFrom ??= i;
     }
   });
 
-  pi.on("tool_call", async (event: any) => {
+  pi.on("tool_call", async (event: any, ctx: ExtensionContext) => {
     if (event.parentToolCallId) return;
     await mem.log("tool", `${event.toolName} ${safeJson(event.input ?? {})}`, "tool_call");
     // Refresh before launch/resume. PiChild inherits this path via spawn's
     // environment; no upstream patch or changes to agent routing needed.
     if (event.toolName === "agent" || event.toolName === "send_message") {
-      await mem.settle(undefined, 30_000);
+      await mem.settle(ctx.signal);
       publishSnapshot(mem);
     }
   });
@@ -75,26 +79,28 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_result", async (event: any) => {
     if (event.parentToolCallId) return;
     const body = textContent(event.content);
-    await mem.log("echo", `${event.toolName}${event.isError ? " ERROR" : ""}: ${body}`, "tool_result");
-    // Resent on every later step of the turn: cap it as the log does (§7).
-    if (body.length <= mem.cfg.capChars) return;
+    const capped = cap(body, mem.cfg.capChars);
+    // Only tool results are capped (§7); other kinds are logged whole.
+    await mem.log("echo", `${event.toolName}${event.isError ? " ERROR" : ""}: ${capped}`, "tool_result");
+    if (capped === body) return;
     const images = (event.content ?? []).filter((b: any) => b?.type === "image");
-    return { content: [{ type: "text", text: cap(body, mem.cfg.capChars) }, ...images] };
+    return { content: [{ type: "text", text: capped }, ...images] };
   });
 
-  // One turn = one agent run (§7). Its view is rendered once, before the
-  // turn's own message is logged, and reused byte-identical on every step so
-  // the cached prefix holds; the turn's steps follow it verbatim.
-  type Turn = { view: any[]; first?: any };
+  // One turn = one agent run (§7). Its view covers the messages before upTo,
+  // the turn's own message excluded, and is reused byte-identical on every
+  // step so the cached prefix holds; the turn's steps follow it verbatim.
+  type Turn = { upTo: number; view?: any[]; first?: any };
   let turn: Turn | undefined;
 
-  const freeze = async (upTo: number, ctx: ExtensionContext): Promise<Turn> => {
-    // No call sees an unsummarized line (§6); the timeout is a fail-safe.
-    if (!(await mem.settle(ctx.signal, 30_000, upTo))) {
-      ctx.ui.notify("optchat-memory: view did not settle before this turn; continuing with placeholders", "warning");
-    }
-    const pieces = splitAtMarks(mem.renderView(upTo));
-    return { view: pieces.map(content => ({ role: "user", content })) };
+  // No call sees an unsummarized line (§6): wait for the compactor however
+  // long, inside the run so Esc aborts it and leaves the message unanswered.
+  const freeze = async (t: Turn, ctx: ExtensionContext): Promise<any[] | undefined> => {
+    if (!mem.settled(t.upTo)) ctx.ui.setStatus("optchat", "mem: waiting for compactor (Esc cancels)");
+    const settled = await mem.settle(ctx.signal, Infinity, t.upTo);
+    ctx.ui.setStatus("optchat", `mem ${mem.root.length} msgs`);
+    if (!settled) return undefined;
+    return splitAtMarks(mem.renderView(t.upTo)).map(content => ({ role: "user", content }));
   };
 
   // Where the turn's messages begin: the message(s) that started the run,
@@ -116,23 +122,32 @@ export default function (pi: ExtensionAPI) {
   };
 
   pi.on("before_agent_start", async (event: any, ctx: ExtensionContext) => {
-    subagents.reportFrom = undefined;
-    turn = await freeze(mem.root.length, ctx);
+    reportFrom = undefined;
+    turn = { upTo: mem.root.length };
     const guide = mem.cfg.replaceContext ? MASTER_PROMPT : MEMORY_GUIDE;
-    return { systemPrompt: `${event.systemPrompt ?? ""}\n\n${guide}\n\n${SUBAGENT_GUIDE}\n\n${VIEW_DOC}` };
+    return { systemPrompt: `${event.systemPrompt ?? ""}\n\n${guide}\n\n${AGENT_GUIDE}\n\n${VIEW_DOC}` };
+  });
+
+  // §8: cache breakpoints on the view pieces (Anthropic); other APIs pass through.
+  pi.on("before_provider_request", (event: any) => {
+    if (!turn?.view || !mem.cfg.replaceContext) return;
+    return markViewBreakpoints(event.payload, turn.view.map((m: any) => m.content));
   });
 
   pi.on("agent_settled", async () => {
     turn = undefined;
+    void mem.commit();
   });
 
   pi.on("context_with_system", async (event: any, ctx: ExtensionContext) => {
-    // A run started without prompt() (a subagent report arriving while idle)
-    // skips before_agent_start: freeze its view here, before its report.
+    // A run started without prompt() (a pstack report arriving while idle)
+    // skips before_agent_start: its view ends before its report.
     if (!turn) {
-      turn = await freeze(subagents.reportFrom ?? mem.root.length, ctx);
-      subagents.reportFrom = undefined;
+      turn = { upTo: reportFrom ?? mem.root.length };
+      reportFrom = undefined;
     }
+    turn.view ??= await freeze(turn, ctx);
+    if (!turn.view) return;
     const messages = event.messages ?? [];
     // Pi requires its system message to stay first: [system] [view] [...].
     let head = 0;
@@ -144,39 +159,7 @@ export default function (pi: ExtensionAPI) {
     return { messages: [...system, ...turn.view, ...rest.slice(turnStart(rest, turn))] };
   });
 
-  for (const tool of memoryTools()) pi.registerTool(tool as any);
-
-  pi.registerTool({
-    name: "spawn",
-    label: "Spawn Subagents",
-    description: "Start one subagent per task, in parallel, in the background; answers their ids at once. Each subagent sees the memory view and its task, and has zoom and date. All reports of one spawn reach you together as one message of \"[id] report\" lines. Never wait or poll for them.",
-    parameters: {
-      type: "object",
-      properties: { tasks: { type: "array", items: { type: "string" }, minItems: 1 } },
-      required: ["tasks"],
-    } as any,
-    async execute(_toolCallId: string, params: any, _signal: any, _onUpdate: any, ctx: ExtensionContext) {
-      const tasks = (params.tasks ?? []).map((t: unknown) => String(t ?? "").trim()).filter(Boolean);
-      if (!tasks.length) return { content: [{ type: "text", text: "No tasks given." }], details: undefined };
-      const ids = await subagents.spawn(tasks, ctx);
-      return { content: [{ type: "text", text: ids.map((id, k) => `[${id}] started: ${tasks[k].replace(/\s+/g, " ").slice(0, 120)}`).join("\n") }], details: undefined };
-    },
-  } as any);
-
-  pi.registerTool({
-    name: "tell",
-    label: "Tell Subagent",
-    description: "Send a message to running subagent id; it arrives between its tool calls.",
-    parameters: { type: "object", properties: { id: { type: "string" }, message: { type: "string" } }, required: ["id", "message"] } as any,
-    async execute(_toolCallId: string, params: any) {
-      return { content: [{ type: "text", text: await subagents.tell(String(params.id), String(params.message)) }], details: undefined };
-    },
-  } as any);
-
-  pi.registerCommand("work", {
-    description: "List running OptChat subagents",
-    handler: async (_args: string, ctx: ExtensionContext) => ctx.ui.notify(subagents.list(), "info"),
-  });
+  for (const tool of memoryTools) pi.registerTool(tool as any);
 
   pi.registerTool({
     name: "memory_status",

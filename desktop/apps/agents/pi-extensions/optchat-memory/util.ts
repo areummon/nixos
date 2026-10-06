@@ -8,7 +8,8 @@ export const pow2 = (l: number) => 2 ** l;
 export const startOf = (p: { l: number; i: number }) => p.i * pow2(p.l);
 export const countOf = (p: { l: number; i: number }) => pow2(p.l);
 export const idOf = (p: { l: number; i: number }) => startOf(p);
-export const localDay = (d = new Date()) => d.toISOString().slice(0, 10);
+export const localDay = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 export const flatten = (s: string) => s.replace(/\s+/g, " ").trim();
 
 export const safeJson = (v: unknown) => {

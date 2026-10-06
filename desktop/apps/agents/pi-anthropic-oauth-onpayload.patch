@@ -1,0 +1,21 @@
+--- a/src/stream.ts
++++ b/src/stream.ts
+@@ -211,7 +211,7 @@
+       const maxTokens =
+         options?.maxTokens || Math.floor(model.maxTokens / 3);
+ 
+-      const params: MessageCreateParamsStreaming = {
++      let params: MessageCreateParamsStreaming = {
+         model: model.id,
+         messages: convertPiMessagesToAnthropic(transcript.messages, isOAuth, model),
+         max_tokens: maxTokens,
+@@ -256,6 +256,9 @@
+         }
+       }
+ 
++      const payload = await options?.onPayload?.(params, model);
++      if (payload !== undefined) params = payload as MessageCreateParamsStreaming;
++
+       // Raw stream instead of the MessageStream helper: MessageStream
+       // accumulates tool_use input and JSON.parses it on content_block_stop,
+       // which throws under fine-grained-tool-streaming (input may be invalid

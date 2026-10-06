@@ -31,7 +31,4 @@ export type Config = {
   compactorModel?: string;
   compactorThinking?: string;
   compactorMaxTokens: number;
-  subagentModel?: string;
-  subagentTools?: string[];
-  subagentExtensions: string[];
 };
