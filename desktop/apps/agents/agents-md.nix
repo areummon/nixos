@@ -14,7 +14,7 @@
     Never read, print, cat, search, copy, or include the contents of:
 
     - `.env`, `.env.*` — any environment file, anywhere (`**/.env*`)
-    - `~/.secrets/` — credential storage (openrouter.env, signal.env)
+    - `~/.secrets/` — credential storage (openrouter.env, discord.env)
     - `~/.ssh/` — SSH keys
     - `~/.gnupg/`, `*.pem`, `*.key`, `id_rsa*`, `credentials.json`
     - Browser profile dirs, wallet configs, or password-manager data

@@ -7,7 +7,10 @@
   imports = [
     ./codex.nix
     ./opencode.nix
-    ./hermes-agent.nix
+    ./pi.nix
+    ./hermes-agent-local.nix
+    ./hermes-agent-news.nix
+    ./hermes-agent-jobs.nix
     ./agents-md.nix
   ];
 }

@@ -28,19 +28,17 @@
       ---- AUTOSTART ----
       -------------------
 
-      hl.on("hyprland.start", function()
-          hl.exec_cmd("waybar")
-          hl.exec_cmd("fcitx5 -d")
-          hl.exec_cmd("sleep 1 && hyprctl setcursor McMojave 40")
-      end)
+      -- Nothing to exec here: waybar, swaync, cliphist and the polkit agent
+      -- run as systemd user services, and fcitx5 is started by its XDG
+      -- autostart entry through uwsm.
 
 
       -------------------------------
       ---- ENVIRONMENT VARIABLES ----
       -------------------------------
 
-      -- No environment variables were present in the original
-      -- Nix configuration.
+      -- Cursor and other session variables come from home.sessionVariables /
+      -- gtk.cursorTheme (see home-manager/home.nix and theme/theme.nix).
 
 
       -----------------------
@@ -54,9 +52,10 @@
               border_size = 2,
 
               col = {
+                  -- Dark borders; the focused window gets a faint lighter edge
                   active_border = {
                       colors = {
-                          "rgba(121212aa)",
+                          "rgba(3a3a3acc)",
                           "rgba(121212aa)",
                       },
                       angle = 45,
@@ -72,26 +71,32 @@
 
           decoration = {
               rounding = 12,
+              rounding_power = 2.5, -- slightly smoother than a circular corner
 
               active_opacity = 0.80,
               inactive_opacity = 0.80,
 
+              -- Soft shadow, lighter on unfocused windows, dropped a few px
               shadow = {
                   enabled = true,
-                  range = 16,
-
-                  -- Hyprland 0.56 limits this to 1-4.
-                  -- Original value was 5.
-                  render_power = 4,
-
-                  color = "rgba(0,0,0,0.35)",
+                  range = 20,
+                  render_power = 3, -- valid range is 1-4
+                  offset = { 0, 3 },
+                  color = "rgba(00000066)",
+                  color_inactive = "rgba(00000040)",
               },
 
+              -- A light blur with a touch of noise reads as
+              -- smooth frosted glass instead of a grainy smear
               blur = {
                   enabled = true,
-                  size = 2,
-                  passes = 3,
+                  size = 3,
+                  passes = 2,
+                  noise = 0.01,
+                  contrast = 0.95,
+                  brightness = 0.8, -- darken the backdrop slightly: smoked glass, crisper text
                   vibrancy = 0.1696,
+                  popups = true,
                   new_optimizations = true,
                   ignore_opacity = true,
               },
@@ -404,6 +409,36 @@
       )
 
 
+      -- Lock screen
+      hl.bind(
+          mainMod .. " + L",
+          hl.dsp.exec_cmd("loginctl lock-session")
+      )
+
+
+      -- Fullscreen
+      hl.bind(
+          mainMod .. " + F",
+          hl.dsp.window.fullscreen({
+              action = "toggle",
+          })
+      )
+
+
+      -- Notification center
+      hl.bind(
+          mainMod .. " + N",
+          hl.dsp.exec_cmd("swaync-client -t -sw")
+      )
+
+
+      -- Clipboard history
+      hl.bind(
+          mainMod .. " + SHIFT + V",
+          hl.dsp.exec_cmd("cliphist list | wofi --dmenu --prompt Clipboard | cliphist decode | wl-copy")
+      )
+
+
       ---------------------
       ---- WORKSPACES ----
       ---------------------
@@ -460,6 +495,17 @@
               direction = "up",
           })
       )
+
+
+      -- Move active window
+      for key, direction in pairs({ H = "left", J = "down", K = "up", L = "right" }) do
+          hl.bind(
+              mainMod .. " + CTRL + " .. key,
+              hl.dsp.window.move({
+                  direction = direction,
+              })
+          )
+      end
 
 
       -----------------------
@@ -566,7 +612,6 @@
           ),
           {
               locked = true,
-              repeating = true,
           }
       )
 
@@ -577,7 +622,6 @@
           ),
           {
               locked = true,
-              repeating = true,
           }
       )
 
@@ -645,32 +689,14 @@
       --------------------------------
 
 
-      -- Brave
+      -- Browsers: always opaque
       hl.window_rule({
+          name = "opaque-browsers",
           match = {
-              title = "(.*)(Brave)$",
+              class = "^(firefox|librewolf|brave-browser)$",
           },
           opaque = true,
       })
-
-
-      -- Firefox
-      hl.window_rule({
-          match = {
-              title = "(.*)(Firefox)$",
-          },
-          opaque = true,
-      })
-
-
-      -- LibreWolf
-      hl.window_rule({
-          match = {
-              title = "(.*)(LibreWolf)$",
-          },
-          opaque = true,
-      })
-
 
       -- Ignore maximize requests
       hl.window_rule({
@@ -737,6 +763,16 @@
           },
           blur = true,
           ignore_alpha = 0,
+      })
+
+
+      -- Swaync: notification popups and control center
+      hl.layer_rule({
+          match = {
+              namespace = "^swaync-(notification-window|control-center)$",
+          },
+          blur = true,
+          ignore_alpha = 0.3, -- blur only the card, not faint pixels around its corners
       })
     '';
   };

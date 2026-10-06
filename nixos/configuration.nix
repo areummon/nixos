@@ -232,10 +232,19 @@
   # Enable the OpenSSH daemon.
   # services.openssh.enable = true;
 
-  # Dependencies from hyprpanel
+  # Desktop services: mounts/trash for nautilus, power profiles, battery info
   services.gvfs.enable = true;
   services.power-profiles-daemon.enable = true;
   services.upower.enable = true;
+
+  # Secret storage for libsecret users (VS Code, Obsidian, Proton VPN),
+  # unlocked with the login password on TTY login
+  services.gnome.gnome-keyring.enable = true;
+  security.pam.services.login.enableGnomeKeyring = true;
+
+  # Weekly TRIM for the NVMe drive, and compressed RAM swap before disk swap
+  services.fstrim.enable = true;
+  zramSwap.enable = true;
 
   # Hyprlock pam conf
   security.pam.services.hyprlock = {};

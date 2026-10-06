@@ -1,0 +1,38 @@
+# System
+
+The NixOS layer: systemd-boot with LUKS, flakes with binary caches and weekly GC, NetworkManager (with OpenVPN), bluetooth, PipeWire with a fixed 2048 quantum, fcitx5 (Mozc, Hangul), caps-to-escape/ctrl, flatpak, podman (docker-compatible), VirtualBox, gnome-keyring, and zram. Home-manager runs as a NixOS module from here.
+
+Owner: `nixos/configuration.nix`. Hardware and disks: `nixos/hardware-configuration.nix` (generated). Overlays: `overlays/default.nix`. Inputs and pins: `flake.nix`, `flake.lock`.
+
+## Sub-features
+
+- `nix-settings`: substituters, `auto-optimise-store`, `gc` weekly with `--delete-older-than 1w`, channels off.
+- `boot`: systemd-boot, keeps 10 generations, LUKS device.
+- `network`: NetworkManager with nameservers 1.1.1.1/8.8.8.8 and the openvpn plugin. Bluetooth is on at boot.
+- `audio`: PipeWire with alsa/pulse/jack and a quantum of 2048. `configure-sound-leds` turns off the mic LED.
+- `input`: fcitx5 for Wayland, `us` layout, interception-tools caps2esc.
+- `virt`: podman (`dockerCompat`), VirtualBox host, distrobox.
+- `desktop-services`: gvfs, power-profiles-daemon, upower, gnome-keyring with PAM, fwupd, flatpak, fstrim, zram.
+- `inputs`: nixpkgs 26.05, unstable, home-manager release-26.05, hyprland, opencode, hermes-agent.
+
+## How to get to it (user POV)
+
+- Everything takes effect after `sudo nixos-rebuild switch --flake .#nixos`. Boot and kernel changes need a reboot.
+
+## Driving it with verify
+
+Preconditions: `$V build` after the edit.
+
+- **Option value.** Run `$V eval services.pipewire.extraConfig`, or any other option path such as `networking.networkmanager.insertNameservers`. The JSON holds the new value.
+- **System package added.** Run `$V build`. The `status:` closure diff lists the package with `∅ → <version>`.
+- **Input bump.** After `nix flake update <input>`, run `$V build`. The closure diff shows the version changes. Run `$V hypr-check` too when `hyprland` moved.
+- **Systemd system unit.** Run `cat "$(cat $($V run)/toplevel.path)/etc/systemd/system/configure-sound-leds.service"`.
+- **Activation (post-switch).** Run `systemctl status <unit>` and `nixos-version`. The user does this after switching.
+
+## Gotchas
+
+- `hardware-configuration.nix` is machine-generated, so don't hand-edit it. The LUKS UUID is in `configuration.nix`.
+- `system.stateVersion` and `home.stateVersion` are `24.11` on purpose. Never bump them as part of an upgrade.
+- `flake-registry = ""` disables `nixpkgs#foo` shorthands. Use `nix shell --inputs-from . nixpkgs#foo`.
+- `environment.pathsToLink` for xdg-desktop-portal is required by the home-manager portal setup in `home.nix`. Removing it breaks the file chooser in flatpak apps.
+- `pkgs` is 26.05 stable, and `pkgs.unstable` comes from the overlay. Mixing both for one package, such as Papirus, causes `buildEnv` conflicts (see the comment in `theme.nix`).

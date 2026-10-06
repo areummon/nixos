@@ -12,20 +12,20 @@
     shellAliases = {
       update = "sudo nixos-rebuild switch";
       sd = "cd ~ && cd \$(fd --type d | fzf)";
-      codex-opencode = "codex --profile opencode-delegation";
     };
     history = {
       size = 10000;
       path = "${config.xdg.dataHome}/zsh/history";
     };
-    initContent = lib.strings.concatStrings [
-      ''
-             if uwsm check may-start && uwsm select; then
+    # Login shell only: start Hyprland through uwsm on the first TTY login
+    profileExtra = ''
+      if uwsm check may-start && uwsm select; then
         exec systemd-cat -t uwsm_start uwsm start default
-             fi
+      fi
+    '';
+    initContent = lib.strings.concatStrings [
+      # compinit itself is run by enableCompletion
       ''
-      ''
-        autoload -Uz compinit && compinit
         zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
       ''
       ''
@@ -37,8 +37,17 @@
       ''
         export KEYTIMEOUT=1  # Reduce mode switch delay
       ''
+      # Load the OpenRouter key only into the commands that need it, instead
+      # of exporting it to every process started from the shell
       ''
-        [ -f ~/.secrets/openrouter.env ] && set -a && source ~/.secrets/openrouter.env && set +a
+        _with_openrouter() {
+          (
+            [ -f ~/.secrets/openrouter.env ] && set -a && source ~/.secrets/openrouter.env && set +a
+            exec "$@"
+          )
+        }
+        opencode() { _with_openrouter opencode "$@" }
+        codex-opencode() { _with_openrouter codex --profile opencode-delegation "$@" }
       ''
     ];
   };

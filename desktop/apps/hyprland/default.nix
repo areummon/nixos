@@ -10,5 +10,6 @@
     ./hypridle.nix
     ./hyprlock.nix
     ./hyprsunset.nix
+    ./session.nix
   ];
 }

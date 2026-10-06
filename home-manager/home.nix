@@ -24,7 +24,6 @@
   home.packages = with pkgs.unstable; [
     anki
     obsidian
-    signal-cli
     brightnessctl
     bluez-tools
     btop
@@ -34,7 +33,6 @@
     xz
     unzip
     bat
-    xdotool
     pstree
     rclone
     zathura
@@ -56,6 +54,7 @@
     playerctl
     libnotify
     proton-vpn
+    claude-code
   ];
 
   home.sessionVariables = {

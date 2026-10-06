@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Build-only verification driver for this NixOS + home-manager flake.
+# Never switches, activates, or touches the running system. Evidence goes to
+# $VERIFY_OUT/<run-id>/ (default ~/.local/state/nixos-config-verify).
+set -euo pipefail
+
+REPO=$(git -C "$(dirname "$(readlink -f "$0")")" rev-parse --show-toplevel)
+HOST=${VERIFY_HOST:-nixos}
+HM_USER=${VERIFY_HM_USER:-moka}
+CFG="$REPO#nixosConfigurations.$HOST.config"
+HM="$CFG.home-manager.users.$HM_USER"
+OUT=${VERIFY_OUT:-${XDG_STATE_HOME:-$HOME/.local/state}/nixos-config-verify}
+LATEST="$OUT/latest"
+
+quiet() { grep -v -e "Git tree .* is dirty" -e "eval-cache.* is busy" >&2 || true; }
+
+run_dir() {
+  [ -L "$LATEST" ] || { echo "no run yet: run '$0 build' first" >&2; exit 2; }
+  readlink -f "$LATEST"
+}
+
+usage() {
+  cat <<EOF
+usage: verify <command> [args]
+
+  doctor              read-only health check (repo, nix, untracked files, eval)
+  build               build system + home-manager files, start a new run,
+                      diff closures against /run/current-system
+  file <home-path>    print a built home file, e.g. .config/hypr/hyprland.lua
+  diff-live <path>    diff the live ~/<path> against the built one
+  eval <attr>         nix eval --json <nixos config attr>, e.g.
+                      home-manager.users.moka.programs.opencode.settings
+  ls [subdir]         list built home files (optionally under a subdir)
+  hypr-check          parse the built hyprland.lua with the built Hyprland
+  run                 print the latest run's evidence directory
+EOF
+}
+
+cmd=${1:-}; shift || true
+case "$cmd" in
+  doctor)
+    echo "repo:     $REPO"
+    echo "host:     $HOST (running: $(hostname))"
+    echo "nix:      $(nix --version)"
+    echo "current:  $(readlink -f /run/current-system)"
+    untracked=$(git -C "$REPO" ls-files --others --exclude-standard --directory -- ':!.claude')
+    if [ -n "$untracked" ]; then
+      echo "WARN untracked files are invisible to the flake; if a module references one,"
+      echo "     run 'git add -N <file>' before building:"
+      echo "$untracked" | sed 's/^/  /'
+    fi
+    drv=$(nix eval --raw "$CFG.system.build.toplevel.drvPath" 2> >(quiet)) \
+      && echo "eval:     ok ($drv)" \
+      || { echo "eval:     FAILED"; exit 1; }
+    if [ -L "$LATEST" ]; then echo "last run: $(readlink -f "$LATEST")"; fi
+    ;;
+  build)
+    run="$OUT/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$run"
+    git -C "$REPO" rev-parse HEAD >"$run/git-head.txt"
+    git -C "$REPO" status --short >"$run/git-status.txt"
+    git -C "$REPO" diff HEAD >"$run/git-diff.patch"
+    sys=$(nix build "$CFG.system.build.toplevel" --no-link --print-out-paths 2> >(tee "$run/build.log" | quiet))
+    home=$(nix build "$HM.home-files" --no-link --print-out-paths 2> >(quiet))
+    echo "$sys" >"$run/toplevel.path"
+    echo "$home" >"$run/home-files.path"
+    nix store diff-closures /run/current-system "$sys" >"$run/closure-diff.txt" 2>&1 || true
+    ln -sfn "$run" "$LATEST"
+    echo "run:       $run"
+    echo "toplevel:  $sys"
+    echo "home:      $home"
+    if [ "$sys" = "$(readlink -f /run/current-system)" ]; then
+      echo "status:    identical to running system (nothing would change)"
+    else
+      echo "status:    differs from running system; closure diff:"
+      sed 's/^/  /' "$run/closure-diff.txt"
+    fi
+    ;;
+  file)
+    [ $# -eq 1 ] || { usage; exit 2; }
+    run=$(run_dir)
+    p="$(cat "$run/home-files.path")/${1#./}"
+    [ -e "$p" ] || { echo "not in built home files: $1" >&2; exit 1; }
+    slug=$(echo "$1" | tr '/' '_')
+    cat "$p" | tee "$run/file$slug.txt"
+    ;;
+  diff-live)
+    [ $# -eq 1 ] || { usage; exit 2; }
+    run=$(run_dir)
+    rel=${1#./}
+    slug=$(echo "$rel" | tr '/' '_')
+    if diff -u "$HOME/$rel" "$(cat "$run/home-files.path")/$rel" >"$run/diff-live_$slug.patch"; then
+      echo "identical: ~/$rel matches the build"
+    else
+      cat "$run/diff-live_$slug.patch"
+    fi
+    ;;
+  eval)
+    [ $# -eq 1 ] || { usage; exit 2; }
+    run=$(run_dir)
+    nix eval --json "$CFG.$1" 2> >(quiet) | tee "$run/eval_$1.json"
+    echo
+    ;;
+  ls)
+    run=$(run_dir)
+    root="$(cat "$run/home-files.path")"
+    (cd "$root" && find -L "./${1:-}" -maxdepth 6 -not -type d 2>/dev/null | sed 's|^\./||' | sort)
+    ;;
+  hypr-check)
+    run=$(run_dir)
+    hypr="$(cat "$run/toplevel.path")/sw/bin/Hyprland"
+    conf="$(cat "$run/home-files.path")/.config/hypr/hyprland.lua"
+    timeout 30 "$hypr" --verify-config -c "$conf" >"$run/hypr-check.txt" 2>&1 && rc=0 || rc=$?
+    tail -5 "$run/hypr-check.txt"
+    exit "$rc"
+    ;;
+  run) run_dir ;;
+  *) usage; [ -z "$cmd" ] || exit 2 ;;
+esac
