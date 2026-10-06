@@ -7,12 +7,13 @@ Owner: `nixos/configuration.nix`. Hardware and disks: `nixos/hardware-configurat
 ## Sub-features
 
 - `nix-settings`: substituters, `auto-optimise-store`, `gc` weekly with `--delete-older-than 1w`, channels off.
-- `boot`: systemd-boot, keeps 10 generations, LUKS device.
+- `boot`: systemd-boot, keeps 10 generations, two LUKS devices (one in `configuration.nix`, one in `hardware-configuration.nix`).
 - `network`: NetworkManager with nameservers 1.1.1.1/8.8.8.8 and the openvpn plugin. Bluetooth is on at boot.
-- `audio`: PipeWire with alsa/pulse/jack and a quantum of 2048. `configure-sound-leds` turns off the mic LED.
+- `audio`: PipeWire with alsa/pulse/jack and a quantum of 2048. `configure-sound-leds` turns off the mic LED when the sysfs path is writable.
 - `input`: fcitx5 for Wayland, `us` layout, interception-tools caps2esc.
 - `virt`: podman (`dockerCompat`), VirtualBox host, distrobox.
-- `desktop-services`: gvfs, power-profiles-daemon, upower, gnome-keyring with PAM, fwupd, flatpak, fstrim, zram.
+- `desktop-services`: gvfs, power-profiles-daemon, upower, gnome-keyring with PAM, fwupd, flatpak, fstrim, zram ahead of the disk swap device from `hardware-configuration.nix`.
+- `session`: the Hyprland NixOS module with the pinned package and portal, `withUWSM`, zsh as the login shell, and `linger = true` for moka, so user units like hermes run without a login.
 - `inputs`: nixpkgs 26.05, unstable, home-manager release-26.05, hyprland, opencode, hermes-agent.
 
 ## How to get to it (user POV)
@@ -31,7 +32,7 @@ Preconditions: `$V build` after the edit.
 
 ## Gotchas
 
-- `hardware-configuration.nix` is machine-generated, so don't hand-edit it. The LUKS UUID is in `configuration.nix`.
+- `hardware-configuration.nix` is machine-generated, so don't hand-edit it. It holds the filesystems, the disk swap, and the second LUKS device. The first LUKS device is in `configuration.nix`.
 - `system.stateVersion` and `home.stateVersion` are `24.11` on purpose. Never bump them as part of an upgrade.
 - `flake-registry = ""` disables `nixpkgs#foo` shorthands. Use `nix shell --inputs-from . nixpkgs#foo`.
 - `environment.pathsToLink` for xdg-desktop-portal is required by the home-manager portal setup in `home.nix`. Removing it breaks the file chooser in flatpak apps.

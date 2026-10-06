@@ -52,6 +52,7 @@ After `$V build`, every command reads that run:
 | List generated files under a dir | `$V ls .config/systemd/user` |
 | Read any evaluated option | `$V eval home-manager.users.moka.programs.opencode.settings` |
 | Read a NixOS option | `$V eval services.pipewire.extraConfig` |
+| Reduce a value before printing | `$V eval boot.initrd.luks.devices builtins.attrNames` (second arg is `--apply`; use it for attrsets that fail to evaluate whole, e.g. `$V eval swapDevices 'map (d: d.device)'`) |
 | Validate Hyprland config | `$V hypr-check` (runs the built Hyprland's `--verify-config`; exit 1 on errors) |
 | Check formatting | `nix fmt -- --check <file.nix>` (alejandra) |
 

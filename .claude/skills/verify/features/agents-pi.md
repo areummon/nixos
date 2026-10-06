@@ -2,13 +2,13 @@
 
 `pi` (pi-coding-agent from unstable) runs with an OpenAI-Codex default model, pinned npm/git packages (web access, permission system, sandbox, pstack), a path/bash permission policy, and the local optchat-memory extension that keeps durable memory under `~/.local/share/pi/optchat-memory/default`.
 
-Owner: `desktop/apps/agents/pi.nix`. Extension source: `desktop/apps/agents/pi-extensions/optchat-memory/`. `pi-extensions/pstack/` is an untracked local copy and isn't wired in; Pi loads pstack from the pinned `git:` package.
+Owner: `desktop/apps/agents/pi.nix`. Extension source: `desktop/apps/agents/pi-extensions/optchat-memory/`. `pi-extensions/pstack/` is a vendored reference copy that nothing in Nix uses. Pi loads pstack from the pinned `git:` package.
 
 ## Sub-features
 
 - `pi-settings`: `~/.pi/agent/settings.json` sets the default provider/model, thinking level, `+codemode`, and pinned packages.
-- `pi-permissions`: `~/.pi/agent/extensions/pi-permission-system/config.json` denies secrets paths, asks for `~/Documents` etc., and asks for bash.
-- `pi-optchat-ext`: `~/.pi/agent/extensions/optchat-memory/*.ts` is the extension source.
+- `pi-permissions`: `~/.pi/agent/extensions/pi-permission-system/config.json` denies `*.env*` (allows `*.env.example`), `~/.secrets`, `~/.ssh`, `~/.gnupg`, `*.pem`, `*.key`, and `*credentials.json`. It asks before reading or writing `~/Documents`, `~/Downloads`, `~/Pictures`, and `~/Desktop/me`. Bash asks by default, `rm -rf *` is denied, `sudo *` asks, and `external_directory` asks.
+- `pi-optchat-ext`: `~/.pi/agent/extensions/optchat-memory/*.ts` is the extension source. In Pi it adds the `/memory` command (status, verify, zoom, pause, resume, rebuild-tree, export, import-notes, html), the `/work` command, and the `spawn`/`tell` subagent tools. Under pstack child processes it runs in a reduced, frozen-snapshot mode (`PSTACK-MEMORY.md`).
 - `pi-optchat-config`: `~/.pi/agent/optchat-memory.json` sets the memory dir, sizes, compactor model, and subagent tools/extensions.
 - `pi-env`: `PI_OPTCHAT_*` session variables.
 
@@ -31,7 +31,7 @@ Preconditions: `$V build` after the edit.
 
 ## Gotchas
 
-- The extension dir is copied from git-tracked files only. Today `PSTACK-MEMORY.md` and `pstack-memory.test.mjs` are untracked and absent from the build.
+- The extension dir is copied from git-tracked files only. A new file is missing from the build until `git add -N`.
 - `config.json` uses `force = true` because `pi install` writes the same path. Activation overwrites whatever Pi wrote there.
-- `optchat-memory.json` and `home.sessionVariables` duplicate values (memory dir, sizes, jobs, cap). Change both together. Session variables only reach new login shells after a switch.
+- `optchat-memory.json` and `home.sessionVariables` duplicate values (memory dir, node/view bytes, jobs, cap chars, replace context). When both set a value, the `PI_OPTCHAT_*` variable wins (`config.ts`), so change both together. Session variables only reach new login shells after a switch.
 - npm packages are installed by Pi at runtime into `~/.pi/agent/npm/`, not by Nix. A new package pin builds fine even if the package doesn't exist.

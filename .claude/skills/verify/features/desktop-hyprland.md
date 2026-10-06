@@ -6,10 +6,10 @@ Owners: `desktop/apps/hyprland/hyprland.nix` (monitors, binds, rules, all in one
 
 ## Sub-features
 
-- `hypr-binds`: SUPER+Q kitty, +C close, +R wofi, +SHIFT+F firefox, +SHIFT+D Brave (flatpak), +L lock, +N notification center, +SHIFT+V clipboard, +SHIFT+A region screenshot, +M `uwsm stop`, +S/+O special workspaces `magic`/`protonvpn`, plus media and brightness keys.
-- `hypr-idle`: dims at 150s, locks at 300s, DPMS off at 330s, suspends at 1800s (`hypridle.nix`).
+- `hypr-binds`: SUPER+Q kitty, +C close, +R wofi, +SHIFT+F firefox, +SHIFT+D Brave (`com.brave.Browser`, a flatpak installed outside the flake), +L lock, +N notification center, +SHIFT+V clipboard, +SHIFT+A region screenshot, +M `uwsm stop`, +S/+O special workspaces `magic`/`protonvpn`, plus media and brightness keys. Also: +V float, +P pseudo, +J split, +F fullscreen, +1..0 / +SHIFT+1..0 workspaces, +SHIFT+H/J/K/L focus (so +SHIFT+L is focus-right, not lock), +CTRL+H/J/K/L move window, scroll cycles workspaces, LMB drag / RMB resize. Gestures: 3-finger swipe switches workspace, ALT+3-finger down closes, 4-finger pinch toggles fullscreen.
+- `hypr-idle`: dims at 150s, locks at 300s, DPMS off at 330s, suspends at 1800s and locks before sleep (`hypridle.nix`). hyprsunset steps through six profiles from 07:00 to 21:00 (`hyprsunset.nix`).
 - `hypr-lock`: hyprlock look plus a PAM entry (`security.pam.services.hyprlock`).
-- `waybar`: left (user, workspaces, window), center (language, temp, mem, cpu, ...), right (mpris, audio, backlight, battery, ...). Click handlers in `waybar/scripts/*`.
+- `waybar`: left (`custom/user`, which is the notifications button that runs `swaync-client`, then workspaces and window), center (language, temp, mem, cpu, distro, idle inhibitor, time, date, network, bluetooth), right (mpris, audio, backlight, battery, power). `network`, `bluetooth`, `backlight`, `volume`, and `power` click handlers are in `waybar/scripts/*`.
 - `session-daemons`: `hyprpolkitagent`, `cliphist`, `swaync`, `waybar`, `hypridle`, `hyprpaper`, `hyprsunset` units.
 - `theme`: GTK dark, Papirus, McMojave hyprcursor (installed by hand in `~/.local/share/icons`).
 
@@ -35,4 +35,4 @@ Preconditions: `$V build` after the edit.
 - Binds live inside a single Lua heredoc in `hyprland.nix`. Nix doesn't parse it, so a Lua error only shows in `hypr-check`.
 - `wayland.windowManager.hyprland.systemd.enable = false`: uwsm owns the session. Don't add `exec-once` for daemons; add a home-manager service instead.
 - The wallpaper path is `~/Pictures/wallpapers/greenleaves2.jpg`. That folder is personal, so don't open it without asking. A missing file builds fine.
-- `wofi` blur and swaync glass come from Hyprland `layer_rule`s near the end of `hyprland.lua`.
+- Blur for `bar-0`, `waybar`, `wofi`, and the swaync glass comes from four Hyprland `layer_rule`s near the end of `hyprland.lua`.

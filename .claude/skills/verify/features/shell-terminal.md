@@ -2,7 +2,7 @@
 
 zsh (vi mode, autosuggestions, syntax highlighting, fzf/eza/zoxide/direnv) with a starship prompt, kitty (MesloLG, everforest dark hard), and neovim with plugins from unstable plus Lua config and LuaSnip snippets. zsh's login profile also starts the Hyprland session.
 
-Owners: `desktop/shell/zsh.nix`, `desktop/shell/starship.nix`, `desktop/apps/kitty/kitty.nix`, `desktop/apps/neovim/` (`neovim.nix`, `init.lua`, `lua/`, `LuaSnip/`), direnv in `home-manager/home.nix`. Login shell: `users.users.moka.shell` in `nixos/configuration.nix`.
+Owners: `desktop/shell/zsh.nix`, `desktop/shell/starship.nix`, `desktop/apps/kitty/kitty.nix`, `desktop/apps/neovim/` (`neovim.nix`, `init.lua`, `lua/`, `LuaSnip/`), direnv in `home-manager/home.nix`, `fd` (used by `sd` and Telescope) in `desktop/apps/fd/fd.nix`. Login shell: `users.users.moka.shell` in `nixos/configuration.nix`.
 
 ## Sub-features
 
@@ -11,7 +11,7 @@ Owners: `desktop/shell/zsh.nix`, `desktop/shell/starship.nix`, `desktop/apps/kit
 - `zsh-login`: `profileExtra` runs `uwsm start` on TTY login.
 - `starship`: `~/.config/starship.toml`.
 - `kitty`: `~/.config/kitty/kitty.conf`.
-- `neovim`: `~/.config/nvim/{init.lua,lua/,LuaSnip/}` plus the plugin pack.
+- `neovim`: `~/.config/nvim/{init.lua,lua/,LuaSnip/}` plus the plugin pack. `vi`/`vim` alias to nvim. Leader is Space, localleader `,`. Telescope is on `<leader>f*`, and LSP covers rust_analyzer, hls, clangd, zls, and tinymist.
 
 ## How to get to it (user POV)
 

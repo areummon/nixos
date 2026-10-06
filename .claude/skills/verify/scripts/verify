@@ -28,8 +28,9 @@ usage: verify <command> [args]
                       diff closures against /run/current-system
   file <home-path>    print a built home file, e.g. .config/hypr/hyprland.lua
   diff-live <path>    diff the live ~/<path> against the built one
-  eval <attr>         nix eval --json <nixos config attr>, e.g.
+  eval <attr> [fn]    nix eval --json <nixos config attr> [--apply fn], e.g.
                       home-manager.users.moka.programs.opencode.settings
+                      boot.initrd.luks.devices builtins.attrNames
   ls [subdir]         list built home files (optionally under a subdir)
   hypr-check          parse the built hyprland.lua with the built Hyprland
   run                 print the latest run's evidence directory
@@ -96,9 +97,9 @@ case "$cmd" in
     fi
     ;;
   eval)
-    [ $# -eq 1 ] || { usage; exit 2; }
+    [ $# -eq 1 ] || [ $# -eq 2 ] || { usage; exit 2; }
     run=$(run_dir)
-    nix eval --json "$CFG.$1" 2> >(quiet) | tee "$run/eval_$1.json"
+    nix eval --json "$CFG.$1" ${2:+--apply "$2"} 2> >(quiet) | tee "$run/eval_$1.json"
     echo
     ;;
   ls)

@@ -7,20 +7,20 @@ This map is the maintained source for finding where each feature of moka's NixOS
 ```text
 flake.nix                       inputs (nixpkgs 26.05, unstable, home-manager, hyprland, opencode, hermes-agent)
                                 -> nixosConfigurations.nixos
-nixos/configuration.nix         system: boot, nix/gc, network, bluetooth, audio, input, users, virtualisation
+nixos/configuration.nix         system: boot, nix/gc, network, audio, input, users, virt, Hyprland+UWSM, zsh, HM wiring
 nixos/hardware-configuration.nix   generated; don't edit by hand
-home-manager/home.nix           user: packages, session vars, portals, git, direnv; imports ../desktop
+home-manager/home.nix           user: packages, session vars, portals, git, direnv; imports hyprland + hermes HM modules and ../desktop
 desktop/default.nix             -> shell/, apps/, theme/theme.nix
 desktop/shell/                  zsh.nix (aliases, fzf, eza, zoxide), starship.nix
 desktop/apps/default.nix        list of every app module; add new apps here
 desktop/apps/agents/            AI agents: pi, hermes (local/news/jobs), opencode, codex, AGENTS.md
-desktop/apps/hyprland/          hyprland.lua (binds, rules), hypridle, hyprlock, hyprpaper, hyprsunset, session daemons
+desktop/apps/hyprland/          hyprland.nix (Lua config: binds, rules), hypridle, hyprlock, hyprpaper, hyprsunset, session daemons
 desktop/apps/waybar/            bar + scripts/ (backlight, bluetooth, network, power, volume)
 desktop/apps/wofi/              launcher (SUPER+R) and clipboard picker
 desktop/apps/{kitty,neovim,firefox,vscode,mpv,fd}/   single-app modules
 desktop/theme/theme.nix         GTK/dconf dark theme, Papirus icons, McMojave cursor
 overlays/default.nix            pkgs.unstable comes from here
-pkgs/, modules/                 empty scaffolding
+pkgs/, modules/                 empty scaffolding (still wired as flake outputs and the additions overlay)
 ```
 
 Package-set conventions: most packages come from `pkgs.unstable.*`, and system/home share one nixpkgs (`useGlobalPkgs`). Agents and the desktop are all home-manager modules, so their options live under `home-manager.users.moka.*` when you `$V eval`.
