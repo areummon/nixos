@@ -7,11 +7,14 @@
   projectsBaseDir = "${config.xdg.dataHome}/pi/optchat-memory/projects";
   globalMemoryDir = "${config.xdg.dataHome}/pi/optchat-memory/global";
   # Keep JSON key order: the permission extension uses the last matching rule.
+  # bash runs in the gondolin VM, which sees only the cwd, so the rules gate
+  # what can hurt the workspace or leave the machine, and the classifier judges
+  # every ask before it reaches the user. It never judges path rules.
   permissionPolicy = ''
     {
+      "authorizerChain": ["classifier"],
       "permission": {
         "*": "allow",
-        "nix": "ask",
         "path": {
           "*": "allow",
           "*.env": "deny",
@@ -38,27 +41,18 @@
         },
         "bash": {
           "*": "allow",
-          "rm *": "ask",
-          "rm -rf *": "deny",
-          "mv *": "ask",
-          "sudo *": "ask",
-          "ssh *": "ask",
-          "scp *": "ask",
-          "rsync *": "ask",
+          "rm -rf *": "ask",
+          "git reset --hard*": "ask",
+          "git clean*": "ask",
+          "git push*": "ask",
           "curl *": "ask",
           "wget *": "ask",
-          "git push*": "ask",
-          "git commit*": "ask",
-          "git reset*": "ask",
-          "git clean*": "ask",
-          "npm install*": "ask",
-          "npm ci*": "ask",
-          "pip install*": "ask",
-          "systemctl *": "ask",
+          "ssh *": "ask",
+          "scp *": "ask",
           "nixos-rebuild*": "deny",
           "home-manager switch*": "deny"
         },
-        "external_directory": "ask"
+        "external_directory": "allow"
       }
     }
   '';
@@ -99,6 +93,8 @@ in {
     cacheWarming = "off";
     packages = [
       "npm:pi-web-access@0.35.0"
+      # Listed before the permission system so its judge registers at startup.
+      "npm:pi-permission-classifier@0.5.2"
       "npm:@gotgenes/pi-permission-system@39.0.3"
       # Overrides the "anthropic" provider's transport and OAuth, retaining
       # Pi's model catalog. Chat and memory calls use this plugin's handler.
@@ -140,6 +136,11 @@ in {
   home.file.".pi/agent/extensions/pi-permission-system/config.json" = {
     force = true; # Replace the file created by `pi install` on the next activation.
     text = permissionPolicy;
+  };
+  home.file.".pi/agent/extensions/pi-permission-classifier/config.json".text = builtins.toJSON {
+    provider = "anthropic";
+    model = "claude-haiku-4-5";
+    timeoutMs = 8000;
   };
 
   # OptChat-style durable memory extension. Source is declarative; runtime data

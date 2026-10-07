@@ -35,4 +35,4 @@ Preconditions: `$V build` after the edit.
 - Binds live inside a single Lua heredoc in `hyprland.nix`. Nix doesn't parse it, so a Lua error only shows in `hypr-check`.
 - `wayland.windowManager.hyprland.systemd.enable = false`: uwsm owns the session. Don't add `exec-once` for daemons; add a home-manager service instead.
 - Image paths are `~/Pictures/wallpapers/greenleaves2.jpg` (hyprpaper), plus `~/Pictures/wallpapers/lockwallpaper1.jpg` and `~/Pictures/icons/icon2.1.jpg` (hyprlock). That folder is personal, so don't open it without asking. A missing file builds fine.
-- Blur for `bar-0`, `waybar`, `wofi`, and the swaync glass comes from four Hyprland `layer_rule`s near the end of `hyprland.lua`.- Blur for `bar-0`, `waybar`, `wofi`, and the swaync glass comes from four Hyprland `layer_rule`s near the end of `hyprland.lua`.
+- Blur for `bar-0`, `waybar`, `wofi`, and the swaync glass comes from four Hyprland `layer_rule`s near the end of `hyprland.lua`.
