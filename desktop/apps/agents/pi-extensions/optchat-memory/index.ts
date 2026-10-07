@@ -179,16 +179,39 @@ export default function (pi: ExtensionAPI) {
     return { messages: [...system, ...turn.view, ...rest.slice(turnStart(rest, turn))] };
   });
 
+  const needGlobal = (): OptChatMemory => {
+    if (!globalMem) throw new Error("global memory is not active (globalMemoryDir unset, or another session holds it)");
+    return globalMem;
+  };
+
+  const globalMemoryTools = [
+    {
+      name: "global_zoom",
+      label: "Global Memory Zoom",
+      description: "Open a <global-memory> line id+n into the two lines of n/2 under it; n=1 gives the note whole.",
+      parameters: { type: "object", properties: { id: { type: "number" }, n: { type: "number" } }, required: ["id", "n"] } as any,
+      async execute(_toolCallId: string, params: any) {
+        return { content: [{ type: "text", text: needGlobal().zoom(params.id, params.n) }], details: undefined };
+      },
+    },
+    {
+      name: "global_date",
+      label: "Global Memory Date",
+      description: "The date and time of a <global-memory> message id.",
+      parameters: { type: "object", properties: { id: { type: "number" } }, required: ["id"] } as any,
+      async execute(_toolCallId: string, params: any) {
+        return { content: [{ type: "text", text: needGlobal().date(params.id) }], details: undefined };
+      },
+    },
+  ];
+
   for (const tool of memoryTools) pi.registerTool(tool as any);
+  for (const tool of globalMemoryTools) pi.registerTool(tool as any);
 
   // Notes are user-wide, so they also go to the global log when it is open.
   const importNotes = async (path: string) => {
     const text = await mem.importNotes(path);
     return globalMem ? `${text}\nglobal: ${await globalMem.importNotes(path)}` : text;
-  };
-  const needGlobal = (): OptChatMemory => {
-    if (!globalMem) throw new Error("global memory is not active (globalMemoryDir unset, or another session holds it)");
-    return globalMem;
   };
 
   pi.registerTool({

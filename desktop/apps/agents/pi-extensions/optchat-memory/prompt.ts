@@ -18,7 +18,7 @@ export const VIEW_DOC = `The view follows, oldest first. If a <global-memory> bl
 
 A summary tags each item with its kind: user (the user's words), talk (Pi's replies), tool (Pi's tool calls), echo (their results), note (memories from before this chat), or work (the report of a subagent, which the log holds as a user message starting "[id] "). A short message is its own line, word for word. Recent lines cover one message each; the older the messages, the more a line covers. A message not summarized yet shows as "(not summarized yet: zoom it)". No message appears in full, not even the last ones.
 
-Navigating: zoom(id, n) opens line id+n into the two lines of n/2 messages it was made from; zoom(id, 1) gives message id in full. Zoom whenever a summary only mentions something you need, such as what Pi's last reply said, a decision, a past attempt or where a file is, before you act, guess or ask. date(id) gives the date and time of message id. zoom and date operate on <chat> ids only; <global-memory> lines cannot be zoomed.`;
+Navigating: zoom(id, n) opens line id+n into the two lines of n/2 messages it was made from; zoom(id, 1) gives message id in full. Zoom whenever a summary only mentions something you need, such as what Pi's last reply said, a decision, a past attempt or where a file is, before you act, guess or ask. date(id) gives the date and time of message id. zoom and date operate on <chat> ids only; use global_zoom and global_date for <global-memory> lines.`;
 
 // §4.4, verbatim (agent renamed). Keep its structure; see the spec's notes.
 export const COMPACT_PROMPT = `You write the memory of Pi, an AI agent that works for one user in one
