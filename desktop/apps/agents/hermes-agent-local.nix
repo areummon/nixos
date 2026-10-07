@@ -14,11 +14,13 @@
       "${config.home.homeDirectory}/.secrets/discord.env"
     ];
     settings = {
-      gateway.multiplex_profiles = true;
-      model.default = "gpt-6-luna";
-      model.provider = "openai-codex";
+      gateway.multiplex_profiles = false; # news/jobs profiles paused
+      model.default = "claude-opus-5-5";
+      model.provider = "anthropic";
       memory.provider = ""; # built-in memory only (MEMORY.md / USER.md)
       terminal.backend = "local";
+      # Keyless Firecrawl tier unless FIRECRAWL_API_KEY is added to a secrets env file.
+      web.extract_backend = "firecrawl";
       discord = {
         require_mention = true;
         auto_thread = true;
@@ -38,24 +40,8 @@
       privacy.redact_pii = true;
       fallback_providers = [
         {
-          provider = "openai-codex";
-          model = "gpt-6-sol";
-        }
-        {
-          provider = "openrouter";
-          model = "deepseek/deepseek-v4.1-flash";
-        }
-        {
-          provider = "nous";
-          model = "meituan/longcat-2.0:free";
-        }
-        {
-          provider = "nous";
-          model = "stepfun/step-3.7-flash:free";
-        }
-        {
-          provider = "openrouter";
-          model = "poolside/laguna-s-2.1:free";
+          provider = "anthropic";
+          model = "claude-sonnet-5-5";
         }
       ];
     };

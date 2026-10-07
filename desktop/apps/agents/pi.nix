@@ -11,6 +11,7 @@
     {
       "permission": {
         "*": "allow",
+        "nix": "ask",
         "path": {
           "*": "allow",
           "*.env": "deny",
@@ -106,6 +107,35 @@ in {
       "git:github.com/michael-denyer/pstack-claude@4d4e159a77aec356ae6be320f281808aab0d25ca"
     ];
   };
+
+  # Pi's copy of the pstack override sheet. setup-pstack can't write it from
+  # inside the gondolin VM, which only mounts the working directory.
+  home.file.".pi/agent/pstack-models.md".text = ''
+    # pstack model configuration
+
+    Per-role model overrides for pstack skills. Each pstack SKILL.md names its defaults in a Models section; the values here override those defaults. Delete a line to fall back to the skill default. A value of `inherit-parent` or `auto` runs that role on the parent session's model (the `Agent` call omits `model`); an alias entry in a panel list still counts toward that panel's fan-out. A model may carry a reasoning effort, as in `opus @xhigh` (levels: low, medium, high, xhigh, max); the role then runs through the pstack effort agent of that level, each entry of a panel list on its own. `default effort` sets the level for a value without one; `session` keeps the parent session's effort. `session hook: off` stops the Claude Code or Codex SessionStart hook from injecting the poteto-mode mandate; any other value, or no line, leaves it on.
+
+    feature, refactoring: opus
+    bug-fix: opus
+    perf-issue: opus
+    hillclimb: opus
+    judgment and prose: opus
+    strongest judgment: opus
+    how explorer: opus
+    how explainer: opus
+    why investigators: opus
+    why synthesizer: opus
+    reflect tooling: opus
+    reflect judgment, divergent, synthesizer: opus
+    arena runners: opus, sonnet
+    arena cross-judge pool: opus, sonnet
+    swarm workers: opus
+    architect runners: opus, sonnet
+    interrogate reviewers: opus, sonnet
+
+    default effort: session
+    session hook: on
+  '';
 
   home.file.".pi/agent/extensions/pi-permission-system/config.json" = {
     force = true; # Replace the file created by `pi install` on the next activation.

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 
@@ -137,6 +138,81 @@ function createGondolinBashOps(vm: VM, localCwd: string): BashOperations {
   };
 }
 
+// The guest has no nix, so this one tool runs on the host. It takes no shell
+// string: each command builds a fixed argv, targets must be flake outputs of
+// the workspace or store paths, and nothing it can run switches the system.
+type NixParams = {
+  command: "eval" | "build" | "flake-check" | "store-cat";
+  target?: string;
+  apply?: string;
+  raw?: boolean;
+};
+
+const NIX_OUTPUT_CHARS = 30_000;
+
+function flakeOutput(target: string | undefined): string {
+  if (!target || !/^\.#\S+$/.test(target)) {
+    throw new Error(
+      `target must be a flake output of the workspace, like .#nixosConfigurations.nixos.config.system.build.toplevel`,
+    );
+  }
+  return target;
+}
+
+function storePath(target: string | undefined): string {
+  if (!target?.startsWith("/nix/store/") || target.split("/").includes("..")) {
+    throw new Error("target must be a /nix/store path");
+  }
+  return target;
+}
+
+// A lock update could pull a new path: input, such as a host directory outside
+// the workspace, into the store, where store-cat would read it.
+const NIX_ARGV: Record<NixParams["command"], (p: NixParams) => string[]> = {
+  eval: (p) => [
+    "eval",
+    flakeOutput(p.target),
+    "--no-update-lock-file",
+    p.raw ? "--raw" : "--json",
+    ...(p.apply ? ["--apply", p.apply] : []),
+  ],
+  build: (p) => [
+    "build",
+    flakeOutput(p.target),
+    "--no-update-lock-file",
+    "--no-link",
+    "--print-out-paths",
+  ],
+  "flake-check": () => ["flake", "check", "--no-update-lock-file"],
+  "store-cat": (p) => ["store", "cat", storePath(p.target)],
+};
+
+function tail(text: string): string {
+  return text.length > NIX_OUTPUT_CHARS
+    ? `[... ${text.length - NIX_OUTPUT_CHARS} chars cut]\n${text.slice(-NIX_OUTPUT_CHARS)}`
+    : text;
+}
+
+function runHostNix(
+  args: string[],
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      "nix",
+      ["--option", "accept-flake-config", "false", ...args],
+      { cwd, signal, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d) => (stdout += d));
+    proc.stderr.on("data", (d) => (stderr += d));
+    proc.on("error", reject);
+    proc.on("close", (exitCode) => resolve({ exitCode, stdout, stderr }));
+  });
+}
+
 export default function (pi: ExtensionAPI) {
   const localCwd = process.cwd();
 
@@ -247,6 +323,45 @@ export default function (pi: ExtensionAPI) {
         operations: createGondolinBashOps(activeVm, localCwd),
       });
       return tool.execute(id, params, signal, onUpdate);
+    },
+  });
+
+  pi.registerTool({
+    name: "nix",
+    label: "Host Nix",
+    description: [
+      `Run nix on the host, outside the Gondolin VM, from the host directory mounted at ${GUEST_WORKSPACE}. The VM has no nix.`,
+      `eval: \`nix eval <target> --json\` (--raw with raw: true; apply is a Nix function passed as --apply).`,
+      `build: \`nix build <target> --no-link --print-out-paths\`.`,
+      `flake-check: \`nix flake check\`.`,
+      `store-cat: \`nix store cat <target>\`, to read a built file, since /nix/store is not visible in the VM.`,
+      `eval and build take a flake output of the workspace, like .#nixosConfigurations.nixos.config.system.build.toplevel.`,
+      `Flakes only see git-tracked files: run \`git add -N <file>\` for a new file first.`,
+    ].join("\n"),
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          enum: ["eval", "build", "flake-check", "store-cat"],
+        },
+        target: { type: "string" },
+        apply: { type: "string" },
+        raw: { type: "boolean" },
+      },
+      required: ["command"],
+    } as any,
+    async execute(_toolCallId: string, params: NixParams, signal?: AbortSignal) {
+      const args = NIX_ARGV[params.command](params);
+      const r = await runHostNix(args, localCwd, signal);
+      const text = [
+        `$ nix ${args.join(" ")}`,
+        `exit ${r.exitCode}`,
+        tail(r.stdout),
+        r.stderr ? `stderr:\n${tail(r.stderr)}` : "",
+      ].join("\n");
+      if (r.exitCode !== 0) throw new Error(text);
+      return { content: [{ type: "text", text }], details: undefined };
     },
   });
 
