@@ -62,8 +62,8 @@
     }
   '';
 in {
-  # carderne/pi-sandbox needs bwrap, rg, and socat on PATH on Linux.
-  home.packages = with pkgs.unstable; [pi-coding-agent nodejs bubblewrap ripgrep socat];
+  # gondolin needs qemu_kvm; bwrap is kept for codex and opencode.
+  home.packages = with pkgs.unstable; [pi-coding-agent nodejs bubblewrap ripgrep qemu_kvm];
 
   # Fix the MCP SDK advisory without downgrading Pi plugins. The Bash parser
   # uses bundled WASM, so its native install script stays explicitly denied.
@@ -99,7 +99,6 @@ in {
     packages = [
       "npm:pi-web-access@0.35.0"
       "npm:@gotgenes/pi-permission-system@39.0.3"
-      "npm:pi-sandbox@0.7.0"
       # Overrides the "anthropic" provider's transport and OAuth, retaining
       # Pi's model catalog. Chat and memory calls use this plugin's handler.
       "npm:pi-anthropic-oauth@0.3.1"
@@ -116,6 +115,11 @@ in {
   # OptChat-style durable memory extension. Source is declarative; runtime data
   # stays mutable under XDG data, not in the Nix store.
   home.file.".pi/agent/extensions/optchat-memory".source = ./pi-extensions/optchat-memory;
+  home.file.".pi/agent/extensions/gondolin".source = ./pi-extensions/gondolin;
+  # Pi resolves an extension's bare imports from its symlink path, so this link
+  # lets the gondolin extension find the package Pi's npm policy installs.
+  home.file.".pi/agent/node_modules".source =
+    config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.pi/agent/npm/node_modules";
   home.file.".pi/agent/optchat-memory.json".text = builtins.toJSON {
     # Each project's memory lives at <projectBaseDir>/<cwd under home, "/" as "--">.
     projectBaseDir = projectsBaseDir;

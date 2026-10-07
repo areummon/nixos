@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 export function applyPolicy(manifest) {
   return {
     ...manifest,
+    dependencies: { ...manifest.dependencies, "@earendil-works/gondolin": "^0.13.0" },
     overrides: { ...manifest.overrides, "@modelcontextprotocol/sdk": "1.32.1" },
     allowScripts: { ...manifest.allowScripts, "tree-sitter-bash": false },
   };
