@@ -4,11 +4,15 @@ import { pathToFileURL } from "node:url";
 
 // Keep Pi's dependency list mutable, but persist these targeted npm policies.
 export function applyPolicy(manifest) {
+  // gondolin replaced pi-sandbox, but `pi install` never removes a package,
+  // and pi-sandbox pulls in a vulnerable node-forge.
+  const { "pi-sandbox": _removed, ...dependencies } = manifest.dependencies ?? {};
   return {
     ...manifest,
-    dependencies: { ...manifest.dependencies, "@earendil-works/gondolin": "^0.13.0" },
+    dependencies: { ...dependencies, "@earendil-works/gondolin": "^0.13.0" },
     overrides: { ...manifest.overrides, "@modelcontextprotocol/sdk": "1.32.1" },
-    allowScripts: { ...manifest.allowScripts, "tree-sitter-bash": false },
+    // ssh2 falls back to pure JS without its native addon.
+    allowScripts: { ...manifest.allowScripts, "tree-sitter-bash": false, ssh2: false, "cpu-features": false },
   };
 }
 
