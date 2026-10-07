@@ -1,6 +1,6 @@
 # Pi coding agent
 
-`pi` (pi-coding-agent from unstable) runs on Anthropic (`claude-opus-5-5` through the `pi-anthropic-oauth` plugin) with pinned npm/git packages (web access, permission system, sandbox, OAuth, pstack), a path/bash permission policy, and the local optchat-memory extension that keeps durable memory under `~/.local/share/pi/optchat-memory/default`, a git repo committed after every turn.
+`pi` (pi-coding-agent from unstable) runs on Anthropic (`claude-opus-5-5` through the `pi-anthropic-oauth` plugin) with pinned npm/git packages (web access, permission system, sandbox, OAuth, pstack), a path/bash permission policy, and the local optchat-memory extension that keeps durable memory per project under `~/.local/share/pi/optchat-memory/projects/<cwd key>` (cwd under home, `/` as `--`; home itself is `home`) plus user-wide notes under `~/.local/share/pi/optchat-memory/global`, each a git repo committed after every turn.
 
 Owner: `desktop/apps/agents/pi.nix`. Extension source: `desktop/apps/agents/pi-extensions/optchat-memory/`. Pi loads pstack from the pinned `git:` package, and pstack's `agent` tool is the only subagent mechanism.
 
@@ -26,11 +26,11 @@ Preconditions: `$V build` after the edit.
 - **Permissions.** Change a rule. Run `$V diff-live .pi/agent/extensions/pi-permission-system/config.json`. Rule order is preserved (the last matching rule wins).
 - **Extension files.** Add or edit a `.ts` file. Run `$V ls .pi/agent/extensions/optchat-memory`. The new file is listed. If it isn't, it's untracked: `git add -N` it and rebuild.
 - **Extension tests.** Run `node --test desktop/apps/agents/pi-extensions/optchat-memory/*.test.mjs desktop/apps/agents/pi-npm-policy.test.mjs`. All tests pass.
-- **Memory config.** Run `$V file .pi/agent/optchat-memory.json`. `memoryDir` and `compactorModel` hold the expected values.
+- **Memory config.** Run `$V file .pi/agent/optchat-memory.json`. `projectBaseDir`, `globalMemoryDir` and `compactorModel` hold the expected values.
 - **Env.** Run `$V eval home-manager.users.moka.home.sessionVariables`. The `PI_OPTCHAT_*` keys match `optchat-memory.json`.
 - **Activation script.** Run `$V eval home-manager.users.moka.home.activation.piNpmPolicy.data`. It references the built `pi-npm-policy.mjs` and `pi-anthropic-oauth-onpayload.patch` store paths.
 - **OAuth patch (post-switch).** Run `grep -n 'options?.onPayload' ~/.pi/agent/npm/node_modules/pi-anthropic-oauth/src/stream.ts`. One match means the patch applied.
-- **Memory commits (post-switch, after a Pi turn).** Run `git -C ~/.local/share/pi/optchat-memory/default log --oneline -3`. The top commit reads `messages 0-<n>`.
+- **Memory commits (post-switch, after a Pi turn).** Run `git -C ~/.local/share/pi/optchat-memory/projects/nixos-config log --oneline -3`. The top commit reads `messages 0-<n>`.
 - **View caching (post-switch, after a multi-turn Pi session).** In the newest `~/.pi/agent/sessions/<cwd>/*.jsonl`, each turn's first assistant `usage.cacheRead` covers most of the view, not just the system prompt (about 17k tokens).
 - **Runtime (post-switch).** Run `pi` and check that the extension loads. Not verifiable from a build.
 

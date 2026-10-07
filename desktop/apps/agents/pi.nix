@@ -4,7 +4,8 @@
   lib,
   ...
 }: let
-  optchatMemoryDir = "${config.xdg.dataHome}/pi/optchat-memory/default";
+  projectsBaseDir = "${config.xdg.dataHome}/pi/optchat-memory/projects";
+  globalMemoryDir = "${config.xdg.dataHome}/pi/optchat-memory/global";
   # Keep JSON key order: the permission extension uses the last matching rule.
   permissionPolicy = ''
     {
@@ -99,7 +100,9 @@ in {
   # stays mutable under XDG data, not in the Nix store.
   home.file.".pi/agent/extensions/optchat-memory".source = ./pi-extensions/optchat-memory;
   home.file.".pi/agent/optchat-memory.json".text = builtins.toJSON {
-    memoryDir = optchatMemoryDir;
+    # Each project's memory lives at <projectBaseDir>/<cwd under home, "/" as "--">.
+    projectBaseDir = projectsBaseDir;
+    inherit globalMemoryDir;
     nodeBytes = 512;
     viewBytes = 128000;
     jobs = 8;
@@ -114,7 +117,6 @@ in {
   };
 
   home.sessionVariables = {
-    PI_OPTCHAT_MEMORY_DIR = optchatMemoryDir;
     PI_OPTCHAT_NODE_BYTES = "512";
     PI_OPTCHAT_VIEW_BYTES = "128000";
     PI_OPTCHAT_JOBS = "8";
@@ -123,5 +125,6 @@ in {
     PI_OPTCHAT_REPLACE_CONTEXT = "1";
   };
 
-  xdg.dataFile."pi/optchat-memory/default/.keep".text = "";
+  xdg.dataFile."pi/optchat-memory/projects/.keep".text = "";
+  xdg.dataFile."pi/optchat-memory/global/.keep".text = "";
 }

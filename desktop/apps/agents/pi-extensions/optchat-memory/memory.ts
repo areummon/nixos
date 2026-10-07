@@ -29,15 +29,19 @@ export class OptChatMemory {
   node(l: number, i: number) { return this.nodes.get(this.key(l, i)); }
   built(l: number, i: number) { return this.nodes.has(this.key(l, i)); }
 
-  async start(ctx: ExtensionContext) {
+  // soft: return false instead of throwing when another process holds the lock.
+  async start(ctx: ExtensionContext, { soft = false }: { soft?: boolean } = {}): Promise<boolean> {
     this.ctx = ctx;
     mkdirSync(join(this.cfg.memoryDir, "main"), { recursive: true });
     mkdirSync(join(this.cfg.memoryDir, "tree"), { recursive: true });
-    await this.acquireLock();
+    if (soft) {
+      if (!(await this.acquireLockSoft())) return false;
+    } else await this.acquireLock();
     this.load();
     this.rebuildView();
     this.pump();
     ctx.ui.setStatus("optchat", `mem ${this.root.length} msgs`);
+    return true;
   }
 
   shutdown() {
@@ -52,6 +56,12 @@ export class OptChatMemory {
   // connections is stale (the OS frees it when its owner dies) and is taken
   // over. No PID files, no timeouts.
   async acquireLock() {
+    if (!(await this.acquireLockSoft())) {
+      throw new Error(`optchat-memory: another process holds ${join(this.cfg.memoryDir, "lock")}; refusing to start`);
+    }
+  }
+
+  async acquireLockSoft(): Promise<boolean> {
     const p = join(this.cfg.memoryDir, "lock");
     const listen = () => new Promise<Server>((resolve, reject) => {
       const server = createServer(socket => socket.end());
@@ -64,7 +74,7 @@ export class OptChatMemory {
     });
     try {
       this.lock = await listen();
-      return;
+      return true;
     } catch (err: any) {
       if (err?.code !== "EADDRINUSE") throw err;
     }
@@ -73,9 +83,10 @@ export class OptChatMemory {
       socket.once("connect", () => { socket.destroy(); resolve(true); });
       socket.once("error", () => resolve(false));
     });
-    if (live) throw new Error(`optchat-memory: another process holds ${p}; refusing to start`);
+    if (live) return false;
     unlinkSync(p);
     this.lock = await listen();
+    return true;
   }
 
   load() {
@@ -221,9 +232,9 @@ export class OptChatMemory {
     }
   }
 
-  renderView(upTo = Infinity) {
+  renderView(upTo = Infinity, tag = "chat") {
     const lines = this.viewBefore(upTo).map(p => `${idOf(p)}+${countOf(p)}|${flatten(this.partText(p))}`);
-    return `<chat>\n${lines.join("\n")}\n</chat>`;
+    return `<${tag}>\n${lines.join("\n")}\n</${tag}>`;
   }
 
   zoom(id: number, n: number): string {

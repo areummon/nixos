@@ -25,12 +25,23 @@ function bool(env: string, fileValue: unknown, fallback = false): boolean {
   return fallback;
 }
 
+// /home/u/projects/foo -> projects--foo; the home directory itself -> home.
+function cwdKey(home: string): string {
+  const cwd = process.cwd();
+  const rel = cwd === home ? "" : cwd.startsWith(`${home}/`) ? cwd.slice(home.length + 1) : cwd.replace(/^\/+/, "");
+  return rel.replaceAll("/", "--") || "home";
+}
+
 export function config(): Config {
   const home = process.env.HOME ?? "/tmp";
   const xdg = process.env.XDG_DATA_HOME ?? join(home, ".local", "share");
   const file = readJsonConfig(home);
+  const projectBaseDir = process.env.PI_OPTCHAT_PROJECT_BASE_DIR || file.projectBaseDir || undefined;
   return {
-    memoryDir: process.env.PI_OPTCHAT_MEMORY_DIR ?? file.memoryDir ?? join(xdg, "pi", "optchat-memory", "default"),
+    memoryDir: process.env.PI_OPTCHAT_MEMORY_DIR
+      ?? (projectBaseDir ? join(projectBaseDir, cwdKey(home)) : file.memoryDir ?? join(xdg, "pi", "optchat-memory", "default")),
+    projectBaseDir,
+    globalMemoryDir: process.env.PI_OPTCHAT_GLOBAL_MEMORY_DIR || file.globalMemoryDir || undefined,
     nodeBytes: num("PI_OPTCHAT_NODE_BYTES", file.nodeBytes, 512),
     viewBytes: num("PI_OPTCHAT_VIEW_BYTES", file.viewBytes, 128000),
     jobs: num("PI_OPTCHAT_JOBS", file.jobs, 8),

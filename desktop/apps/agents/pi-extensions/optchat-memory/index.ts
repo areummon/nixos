@@ -42,14 +42,28 @@ export default function (pi: ExtensionAPI) {
   // before it (§7: the view is rendered before the new message is logged).
   let reportFrom: number | undefined;
 
+  // User-wide notes shared by every project, in its own log under its own lock.
+  // Only one session can hold that lock; the others run with project memory only.
+  let globalMem: OptChatMemory | undefined;
+
   pi.on("session_start", async (_event, ctx) => {
     await mem.start(ctx as ExtensionContext);
     publishSnapshot(mem);
+    const cfg = mem.cfg;
+    if (!cfg.globalMemoryDir) return;
+    globalMem = new OptChatMemory({ ...cfg, memoryDir: cfg.globalMemoryDir, viewBytes: Math.floor(cfg.viewBytes / 4) });
+    if (!(await globalMem.start(ctx as ExtensionContext, { soft: true }))) {
+      globalMem = undefined;
+      ctx.ui.notify(`optchat-memory: another session holds the global memory in ${cfg.globalMemoryDir}; running with project memory only`, "warning");
+    }
+    ctx.ui.setStatus("optchat", `mem ${mem.root.length} msgs`);
   });
   pi.on("session_shutdown", async () => {
     await mem.commit();
     mem.shutdown();
     removePublishedSnapshot(mem);
+    await globalMem?.commit();
+    globalMem?.shutdown();
   });
 
   pi.on("message_end", async (event: any) => {
@@ -100,7 +114,12 @@ export default function (pi: ExtensionAPI) {
     const settled = await mem.settle(ctx.signal, Infinity, t.upTo);
     ctx.ui.setStatus("optchat", `mem ${mem.root.length} msgs`);
     if (!settled) return undefined;
-    return splitAtMarks(mem.renderView(t.upTo)).map(content => ({ role: "user", content }));
+    let view = mem.renderView(t.upTo);
+    if (globalMem) {
+      if (!(await globalMem.settle(ctx.signal))) return undefined;
+      view = `${globalMem.renderView(Infinity, "global-memory")}\n${view}`;
+    }
+    return splitAtMarks(view).map(content => ({ role: "user", content }));
   };
 
   // Where the turn's messages begin: the message(s) that started the run,
@@ -137,6 +156,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_settled", async () => {
     turn = undefined;
     void mem.commit();
+    void globalMem?.commit();
   });
 
   pi.on("context_with_system", async (event: any, ctx: ExtensionContext) => {
@@ -161,13 +181,35 @@ export default function (pi: ExtensionAPI) {
 
   for (const tool of memoryTools) pi.registerTool(tool as any);
 
+  // Notes are user-wide, so they also go to the global log when it is open.
+  const importNotes = async (path: string) => {
+    const text = await mem.importNotes(path);
+    return globalMem ? `${text}\nglobal: ${await globalMem.importNotes(path)}` : text;
+  };
+  const needGlobal = (): OptChatMemory => {
+    if (!globalMem) throw new Error("global memory is not active (globalMemoryDir unset, or another session holds it)");
+    return globalMem;
+  };
+
   pi.registerTool({
     name: "memory_status",
     label: "Memory Status",
     description: "Show OptChat memory status, including message count, view size, and compactor state.",
     parameters: { type: "object", properties: {}, required: [] } as any,
     async execute() {
-      return { content: [{ type: "text", text: mem.status() }], details: undefined };
+      const text = globalMem ? `${mem.status()}\n--- global memory ---\n${globalMem.status()}` : mem.status();
+      return { content: [{ type: "text", text }], details: undefined };
+    },
+  } as any);
+
+  pi.registerTool({
+    name: "memory_note_global",
+    label: "Global Memory Note",
+    description: "Save a note to the user-wide global memory, shown in <global-memory> in every project.",
+    parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } as any,
+    async execute(_toolCallId: string, params: any) {
+      const i = await needGlobal().log("note", String(params.text), "memory_note_global");
+      return { content: [{ type: "text", text: `saved global note ${i}` }], details: undefined };
     },
   } as any);
 
@@ -184,11 +226,11 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_control",
     label: "Memory Control",
-    description: "Control OptChat memory: pause, resume, rebuild-tree, export, import-notes, or html (write a browsable page).",
+    description: "Control OptChat memory: pause, resume, rebuild-tree, export, import-notes, or html (write a browsable page). global-export, global-import-notes and global-html act on the global memory.",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["pause", "resume", "rebuild-tree", "export", "import-notes", "html"] },
+        action: { type: "string", enum: ["pause", "resume", "rebuild-tree", "export", "import-notes", "html", "global-export", "global-import-notes", "global-html"] },
         path: { type: "string" },
       },
       required: ["action"],
@@ -204,8 +246,11 @@ export default function (pi: ExtensionAPI) {
         text = "resumed";
       } else if (params.action === "rebuild-tree") text = mem.rebuildTree();
       else if (params.action === "export") text = mem.exportSnapshot(params.path || join(mem.cfg.memoryDir, `export-${Date.now()}.json`));
-      else if (params.action === "import-notes") text = await mem.importNotes(params.path);
+      else if (params.action === "import-notes") text = await importNotes(params.path);
       else if (params.action === "html") text = writeHtml(mem, params.path || join(mem.cfg.memoryDir, "memory.html"));
+      else if (params.action === "global-export") text = needGlobal().exportSnapshot(params.path || join(needGlobal().cfg.memoryDir, `export-${Date.now()}.json`));
+      else if (params.action === "global-import-notes") text = await needGlobal().importNotes(params.path);
+      else if (params.action === "global-html") text = writeHtml(needGlobal(), params.path || join(needGlobal().cfg.memoryDir, "memory.html"));
       else text = `unknown action: ${params.action}`;
       return { content: [{ type: "text", text }], details: undefined };
     },
@@ -229,7 +274,7 @@ export default function (pi: ExtensionAPI) {
           ctx.ui.notify("optchat-memory resumed", "info");
         } else if (cmd === "rebuild-tree") ctx.ui.notify(mem.rebuildTree(), "info");
         else if (cmd === "export") ctx.ui.notify(mem.exportSnapshot(a || join(mem.cfg.memoryDir, `export-${Date.now()}.json`)), "info");
-        else if (cmd === "import-notes") ctx.ui.notify(await mem.importNotes(a), "info");
+        else if (cmd === "import-notes") ctx.ui.notify(await importNotes(a), "info");
         else if (cmd === "html") ctx.ui.notify(writeHtml(mem, a || join(mem.cfg.memoryDir, "memory.html")), "info");
         else ctx.ui.notify("Usage: /memory status | verify | zoom <id> <n> | date <id> | pause | resume | rebuild-tree | export [path] | import-notes <path> | html [path]", "warning");
       } catch (err) {

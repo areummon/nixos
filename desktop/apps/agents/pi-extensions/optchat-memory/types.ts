@@ -20,6 +20,8 @@ export type Part = { l: number; i: number };
 
 export type Config = {
   memoryDir: string;
+  projectBaseDir?: string;
+  globalMemoryDir?: string;
   nodeBytes: number;
   viewBytes: number;
   jobs: number;
