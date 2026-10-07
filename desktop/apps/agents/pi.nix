@@ -36,9 +36,26 @@
           "~/Desktop/me/*": "ask"
         },
         "bash": {
-          "*": "ask",
+          "*": "allow",
+          "rm *": "ask",
           "rm -rf *": "deny",
-          "sudo *": "ask"
+          "mv *": "ask",
+          "sudo *": "ask",
+          "ssh *": "ask",
+          "scp *": "ask",
+          "rsync *": "ask",
+          "curl *": "ask",
+          "wget *": "ask",
+          "git push*": "ask",
+          "git commit*": "ask",
+          "git reset*": "ask",
+          "git clean*": "ask",
+          "npm install*": "ask",
+          "npm ci*": "ask",
+          "pip install*": "ask",
+          "systemctl *": "ask",
+          "nixos-rebuild*": "deny",
+          "home-manager switch*": "deny"
         },
         "external_directory": "ask"
       }
