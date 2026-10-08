@@ -14,7 +14,6 @@
       "${config.home.homeDirectory}/.secrets/discord.env"
     ];
     settings = {
-      gateway.multiplex_profiles = false; # news/jobs profiles paused
       model.default = "claude-opus-5-5";
       model.provider = "anthropic";
       # One chat that never ends (hermes-plugins/optchat), next to the built-in MEMORY.md / USER.md.
