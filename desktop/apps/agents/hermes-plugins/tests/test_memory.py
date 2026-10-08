@@ -452,6 +452,37 @@ class InjectionTest(Fixture):
             holder.stdout.close()
 
 
+class StoreTest(Fixture):
+    def test_a_replaced_file_is_on_disk_before_and_after_the_rename(self):
+        # Without an fsync of the new bytes before the rename and of the directory after it, a
+        # power loss can leave view.json empty or the old one in place.
+        import os
+        from unittest import mock
+
+        from optchat.store import Store
+
+        store = Store(self.home / "optchat")
+        self.assertTrue(store.try_lock())
+        events = []
+        real_fsync, real_replace = os.fsync, os.replace
+
+        def fsync(fd):
+            events.append(("fsync", os.path.realpath(f"/proc/self/fd/{fd}")))
+            real_fsync(fd)
+
+        def replace(src, dst):
+            events.append(("replace", os.path.realpath(src)))
+            real_replace(src, dst)
+
+        with mock.patch("optchat.store.os.fsync", fsync), mock.patch("optchat.store.os.replace", replace):
+            store.save_parents({"s2": "s1"})
+        store.unlock()
+        root = os.path.realpath(store.root)
+        tmp = os.path.join(root, "parents.json.tmp")
+        self.assertEqual(events, [("fsync", tmp), ("replace", tmp), ("fsync", root)])
+        self.assertEqual(store.load_parents(), {"s2": "s1"})
+
+
 class ZoomTest(Fixture):
     def test_zoom_one_is_whole_and_zoom_n_is_two_children(self):
         p = self.provider()

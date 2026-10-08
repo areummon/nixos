@@ -154,5 +154,13 @@ class Store:
         assert self.writable, "optchat store is read-only"
         path = self.root / name
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj))
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(obj))
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, path)
+        fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
