@@ -13,6 +13,9 @@ from typing import Dict, List, Optional, Tuple
 from .model import Message, Node
 from .tree import Part
 
+# A value and when it was last touched, in epoch seconds.
+Stamped = Tuple[str, float]
+
 
 @dataclass
 class Loaded:
@@ -133,29 +136,39 @@ class Store:
     def save_view(self, parts) -> None:
         self._replace("view.json", [[p.l, p.i] for p in parts])
 
-    def load_viewed(self) -> List[str]:
-        """Ids of the sessions whose history carries the view (see Memory.observe)."""
+    def load_viewed(self, now: float) -> Dict[str, float]:
+        """The sessions whose history carries the view (see Memory.observe), each with when it was
+        last touched. The older file, a bare list of ids, reads as touched ``now``."""
+        ids = self._load_json("viewed.json")
+        if isinstance(ids, list):
+            return {i: now for i in ids if isinstance(i, str)}
+        if isinstance(ids, dict):
+            return {k: _time(t, now) for k, t in ids.items()}
+        return {}
+
+    def save_viewed(self, touched: Dict[str, float]) -> None:
+        self._replace("viewed.json", {k: round(t) for k, t in sorted(touched.items())})
+
+    def load_parents(self, now: float) -> Dict[str, Stamped]:
+        """Each compressed or branched session's parent (see Memory.link) and when the link was last
+        touched. The older file maps a child straight to its parent, read as touched ``now``."""
+        links = self._load_json("parents.json")
+        out: Dict[str, Stamped] = {}
+        for k, v in (links.items() if isinstance(links, dict) else ()):
+            if isinstance(v, str):
+                out[k] = (v, now)
+            elif isinstance(v, dict) and isinstance(v.get("parent"), str):
+                out[k] = (v["parent"], _time(v.get("touched"), now))
+        return out
+
+    def save_parents(self, links: Dict[str, Stamped]) -> None:
+        self._replace("parents.json", {k: {"parent": p, "touched": round(t)} for k, (p, t) in sorted(links.items())})
+
+    def _load_json(self, name: str):
         try:
-            ids = json.loads((self.root / "viewed.json").read_text())
+            return json.loads((self.root / name).read_text())
         except (OSError, ValueError):
-            return []
-        return [i for i in ids if isinstance(i, str)] if isinstance(ids, list) else []
-
-    def save_viewed(self, ids) -> None:
-        self._replace("viewed.json", sorted(ids))
-
-    def load_parents(self) -> Dict[str, str]:
-        """Each compressed or branched session's parent (see Memory.link)."""
-        try:
-            links = json.loads((self.root / "parents.json").read_text())
-        except (OSError, ValueError):
-            return {}
-        if not isinstance(links, dict):
-            return {}
-        return {k: v for k, v in links.items() if isinstance(k, str) and isinstance(v, str)}
-
-    def save_parents(self, links: Dict[str, str]) -> None:
-        self._replace("parents.json", links)
+            return None
 
     def _replace(self, name: str, obj) -> None:
         assert self.writable, "optchat store is read-only"
@@ -167,6 +180,10 @@ class Store:
             os.fsync(f.fileno())
         os.replace(tmp, path)
         _fsync_dir(self.root)
+
+
+def _time(t, now: float) -> float:
+    return float(t) if isinstance(t, (int, float)) and not isinstance(t, bool) else now
 
 
 def _fsync_dir(path: Path) -> None:

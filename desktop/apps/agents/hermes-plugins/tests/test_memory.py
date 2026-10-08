@@ -416,6 +416,58 @@ class InjectionTest(Fixture):
         parents = self.home / "optchat" / "parents.json"
         self.assertNotIn("s1", json.loads(parents.read_text()) if parents.exists() else {})
 
+    def clock(self, now):
+        """Pins the time optchat.memory reads to now[0]."""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        return mock.patch("optchat.memory.time", SimpleNamespace(time=lambda: now[0]), create=True)
+
+    def saved(self, name):
+        return json.loads((self.home / "optchat" / name).read_text())
+
+    def test_a_session_idle_past_the_limit_is_forgotten_and_a_live_one_kept(self):
+        day, now = 86_400, [1_800_000_000.0]
+        with self.clock(now):
+            p = self.provider()
+            p.sync_turn("hello", "hi", session_id="s0", messages=turn("hello", "hi"))
+            head = {}
+            for s in ("idle", "live"):
+                view = p.prefetch("q", session_id=s)
+                head[s] = [self.sent("q", view), {"role": "assistant", "content": "a"}]
+                p.sync_turn("q", "a", session_id=s, messages=head[s])
+                p.on_session_switch(s + "2", parent_session_id=s, reset=False, reason="compression")
+            for k in range(2):
+                now[0] += 20 * day
+                more = head["live"] + turn(f"more {k}", "ok")
+                p.sync_turn(f"more {k}", "ok", session_id="live", messages=more)
+                p.sync_turn(f"more {k}", "ok", session_id="live2", messages=more)
+            self.assertNotIn("idle", self.saved("viewed.json"))
+            self.assertIn("live", self.saved("viewed.json"))
+            self.assertEqual(list(self.saved("parents.json")), ["live2"])
+            self.assertTrue(p.prefetch("back", session_id="idle"), "a forgotten session is offered the view again")
+            p.shutdown()
+            self.providers.remove(p)
+            p = self.provider(session="live")
+            self.assertEqual(p.prefetch("resumed", session_id="live"), "")
+
+    def test_files_from_before_the_times_were_kept_count_as_touched_at_load(self):
+        day, now = 86_400, [1_800_000_000.0]
+        root = self.home / "optchat"
+        root.mkdir()
+        (root / "viewed.json").write_text(json.dumps(["s1"]))
+        (root / "parents.json").write_text(json.dumps({"s2": "s1"}))
+        with self.clock(now):
+            p = self.provider()
+            self.assertEqual(p.prefetch("q", session_id="s1"), "")
+            p.on_session_switch("b1", parent_session_id="s0", reset=False, reason="branch")
+            self.assertEqual(self.saved("parents.json")["s2"], {"parent": "s1", "touched": now[0]})
+            now[0] += 31 * day
+            p.on_session_switch("b2", parent_session_id="s0", reset=False, reason="branch")
+            p.sync_turn("q", "a", session_id="s3", messages=[self.sent("q", "<chat>\nx\n</chat>")])
+            self.assertEqual(list(self.saved("parents.json")), ["b2"])
+            self.assertEqual(list(self.saved("viewed.json")), ["s3"])
+
     def test_two_instances_in_one_process_share_the_writer(self):
         a = self.provider(session="discord-1")
         b = self.provider(session="discord-2")
@@ -475,12 +527,12 @@ class StoreTest(Fixture):
             real_replace(src, dst)
 
         with mock.patch("optchat.store.os.fsync", fsync), mock.patch("optchat.store.os.replace", replace):
-            store.save_parents({"s2": "s1"})
+            store.save_parents({"s2": ("s1", 1_000_000)})
         store.unlock()
         root = os.path.realpath(store.root)
         tmp = os.path.join(root, "parents.json.tmp")
         self.assertEqual(events, [("fsync", tmp), ("replace", tmp), ("fsync", root)])
-        self.assertEqual(store.load_parents(), {"s2": "s1"})
+        self.assertEqual(store.load_parents(0), {"s2": ("s1", 1_000_000)})
 
     def test_a_new_file_or_directory_is_on_disk_once_its_parent_is_synced(self):
         # An fsynced append survives a power loss only if the directory entry naming its file

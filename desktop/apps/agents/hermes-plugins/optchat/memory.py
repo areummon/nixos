@@ -10,6 +10,7 @@ import bisect
 import heapq
 import logging
 import threading
+import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -20,13 +21,14 @@ from .compaction import Call, Job
 from .ingest import CHAT_KINDS, Authored, all_rows, carries_view, last_turn, pages, resume_point
 from .model import Config, Kind, Message, Node, byte_len
 from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
-from .store import Store
+from .store import Stamped, Store
 from .tree import Part, View, contiguous_prefix, fit, grow, part_named, view_before
 
 logger = logging.getLogger(__name__)
 
 Spawn = Callable[..., threading.Thread]
 PLACEHOLDER_BYTES = byte_len(PLACEHOLDER)
+DAY = 86_400
 
 
 def source_of(platform: str, session_id: str) -> str:
@@ -57,10 +59,12 @@ class Memory:
         # Per session id, across every provider instance in this process: whether its history
         # carries the view. "offered" from the prefetch that returned it until a sync shows the
         # list; "landed" once one does, saved so a restart doesn't send a second copy.
-        self._views: Dict[str, str] = {}
+        self._views: Dict[str, Stamped] = {}
         # A compressed or branched session's parent: its rows are this session's history too.
         # Saved, so a child whose first sync comes after a restart still resumes after them.
-        self._parents: Dict[str, str] = {}
+        self._parents: Dict[str, Stamped] = {}
+        # Both stamp each entry with when a sync last used it and forget it after
+        # cfg.forget_after_days without one, so neither grows with every session ever seen.
         # Ids of the messages each source logged from a session's list (CHAT_KINDS), in order.
         self._by_source: Dict[str, List[int]] = {}
 
@@ -72,10 +76,15 @@ class Memory:
         with self.lock:
             self.store.try_lock()
             self._load()
-            self._views = dict.fromkeys(self.store.load_viewed(), "landed")
-            self._parents = self.store.load_parents()
+            now = time.time()
+            self._views = {s: ("landed", t) for s, t in self.store.load_viewed(now).items()}
+            self._parents = self.store.load_parents(now)
             if self.writable:
                 self.store.save_view(self.view.parts)
+                if self._prune(self._views, now):
+                    self._save_viewed(now)
+                if self._prune(self._parents, now):
+                    self._save_parents(now)
                 self._seed()
         self.pump()
         return self
@@ -159,23 +168,31 @@ class Memory:
         if m.source and m.kind in CHAT_KINDS:
             self._by_source.setdefault(m.source, []).append(m.i)
 
-    def _logged(self, platform: str, session_id: str, limit: int) -> List[tuple]:
-        """The last ``limit`` rows logged from this session's list or its ancestors'."""
-        ids: List[int] = []
-        seen: Set[str] = set()
+    def _lineage(self, session_id: str) -> List[str]:
+        """This session and its ancestors, nearest first."""
+        out: List[str] = []
         sid: Optional[str] = session_id
-        while sid and sid not in seen:
-            seen.add(sid)
+        while sid and sid not in out:
+            out.append(sid)
+            link = self._parents.get(sid)
+            sid = link[0] if link else None
+        return out
+
+    def _logged(self, platform: str, lineage: List[str], limit: int) -> List[tuple]:
+        """The last ``limit`` rows logged from the lists of this lineage's sessions."""
+        ids: List[int] = []
+        for sid in lineage:
             ids += self._by_source.get(source_of(platform, sid), [])[-limit:]
-            sid = self._parents.get(sid)
         return [(self.messages[i].kind, self.messages[i].text) for i in sorted(ids)[-limit:]]
 
     def link(self, session_id: str, parent_id: str) -> None:
         with self.lock:
-            if parent_id and parent_id != session_id and self._parents.get(session_id) != parent_id:
-                self._parents[session_id] = parent_id
+            link = self._parents.get(session_id)
+            if parent_id and parent_id != session_id and not (link and link[0] == parent_id):
+                now = time.time()
+                self._parents[session_id] = (parent_id, now)
                 if self.writable and not self._closed:
-                    self.store.save_parents(self._parents)
+                    self._save_parents(now)
 
     def ingest(self, session_id: str, messages: Sequence[dict], platform: str, authored: Authored) -> int:
         """Log the rows of ``messages`` this session has not logged yet; returns how many."""
@@ -184,13 +201,18 @@ class Memory:
         with self.lock:
             if not self.writable or self._closed:
                 return 0
+            lineage = self._lineage(session_id)
             # The list overlaps at most len(rows) logged rows; the slack covers rows an /undo dropped.
-            logged = self._logged(platform, session_id, 2 * len(rows) + 256)
+            logged = self._logged(platform, lineage, 2 * len(rows) + 256)
             # History that matches nothing logged from this session predates the log (the provider
             # was just enabled): it is not today's, so only the current turn is logged.
             new = rows[resume_point(rows, logged) or last_turn(rows):]
             for kind, text in new:
                 self._append(kind, text, source_of(platform, session_id))
+            now = time.time()
+            restamped = [sid for sid in lineage if _touch(self._parents, sid, now)]
+            if restamped:
+                self._save_parents(now)
         self.pump()
         return len(new)
 
@@ -200,7 +222,7 @@ class Memory:
         with self.lock:
             if session_id in self._views:
                 return False
-            self._views[session_id] = "offered"
+            self._views[session_id] = ("offered", time.time())
             return True
 
     def observe(self, session_id: str, messages: Sequence[dict]) -> None:
@@ -215,16 +237,35 @@ class Memory:
     def inherit_view(self, session_id: str, parent_id: str) -> None:
         """A branch starts with its parent's history, view and all."""
         with self.lock:
-            state = self._views.get(parent_id)
-        self._set_view(session_id, state)
+            entry = self._views.get(parent_id)
+        self._set_view(session_id, entry[0] if entry else None)
 
     def _set_view(self, session_id: str, state: Optional[str]) -> None:
         with self.lock:
+            now = time.time()
             was = self._views.pop(session_id, None)
+            touched = False
             if state:
-                self._views[session_id] = state
-            if (was == "landed") != (state == "landed") and self.writable and not self._closed:
-                self.store.save_viewed(s for s, v in self._views.items() if v == "landed")
+                self._views[session_id] = was if was and was[0] == state else (state, now)
+                touched = _touch(self._views, session_id, now)
+            changed = (was is not None and was[0] == "landed") != (state == "landed") or (state == "landed" and touched)
+            if changed and self.writable and not self._closed:
+                self._save_viewed(now)
+
+    def _prune(self, entries: Dict[str, Stamped], now: float) -> bool:
+        """Drop the entries no sync touched within cfg.forget_after_days; True if any went."""
+        stale = [k for k, (_, t) in entries.items() if now - t >= self.cfg.forget_after_days * DAY]
+        for k in stale:
+            del entries[k]
+        return bool(stale)
+
+    def _save_viewed(self, now: float) -> None:
+        self._prune(self._views, now)
+        self.store.save_viewed({s: t for s, (v, t) in self._views.items() if v == "landed"})
+
+    def _save_parents(self, now: float) -> None:
+        self._prune(self._parents, now)
+        self.store.save_parents(self._parents)
 
     def _line(self, p: Part) -> str:
         n = self.nodes.get(p)
@@ -359,6 +400,16 @@ class Memory:
         with self.lock:
             self._closed = True
             self.store.unlock()
+
+
+def _touch(entries: Dict[str, Stamped], key: str, now: float) -> bool:
+    """Restamp an entry a day or more old: often enough to keep a live session's, rarely enough not
+    to rewrite its file every turn. True if it changed what is saved."""
+    entry = entries.get(key)
+    if entry is None or now - entry[1] < DAY:
+        return False
+    entries[key] = (entry[0], now)
+    return True
 
 
 _OPEN: Dict[Path, List] = {}
