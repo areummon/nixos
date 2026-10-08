@@ -19,6 +19,7 @@ from agent.context_compressor import is_compaction_summary_message, user_origina
 from agent.memory_manager import sanitize_context
 from agent.memory_provider import MemoryProvider, spawn_context_thread
 from agent.skill_commands import extract_user_instruction_from_skill_message
+from gateway.message_timestamps import strip_leading_message_timestamps
 
 from .compaction import hermes_call
 from .ingest import text_of
@@ -70,15 +71,17 @@ def _authored(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     Compaction summaries and Hermes's own user-role nudges are dropped. A user row keeps only the
     user's words: a summary merged into it is cut off, the <memory-context> block Hermes appends to
-    multimodal content goes (string content keeps it in the api_content sidecar instead), and a
-    /skill turn keeps the instruction, not the skill body.
+    multimodal content goes (string content keeps it in the api_content sidecar instead), a
+    /skill turn keeps the instruction, not the skill body, and the gateway's leading timestamp goes,
+    as the log dates each row itself and a reloaded row must read as it did live.
     """
     if msg.get("role") != "user":
         return None if is_compaction_summary_message(msg) else msg
     live = user_originated_turn_view(msg)
     if live is None:
         return None
-    text = extract_user_instruction_from_skill_message(sanitize_context(text_of(live.get("content"))))
+    text = strip_leading_message_timestamps(sanitize_context(text_of(live.get("content"))))[0]
+    text = extract_user_instruction_from_skill_message(text)
     return {"role": "user", "content": text} if text else None
 
 

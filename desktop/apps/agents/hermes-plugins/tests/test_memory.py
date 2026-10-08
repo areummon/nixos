@@ -181,6 +181,20 @@ class IngestTest(Fixture):
         p.sync_turn("p", "q", session_id="s1", messages=kept + turn("x", "y") + turn("p", "q"))
         self.assertEqual([r["text"] for r in self.main_rows()], list("abcdefxypq"))
 
+    def test_a_logged_turn_reloaded_in_another_form_is_not_logged_again(self):
+        # The gateway reloads history from its DB: images become "[screenshot]" text, and with
+        # gateway.message_timestamps on, user text gains a leading timestamp.
+        image = {"role": "user", "content": [
+            {"type": "text", "text": "look"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA"}}]}
+        reloaded = {"role": "user", "content": "[Wed 2026-10-07 09:00:00 UTC] look\n[screenshot]"}
+        p = self.provider()
+        first = turn("hi", "hello")
+        p.sync_turn("look", "a cat", session_id="s1", messages=first + [image, {"role": "assistant", "content": "a cat"}])
+        p.sync_turn("and now?", "ok", session_id="s1",
+                    messages=first + [reloaded, {"role": "assistant", "content": "a cat"}] + turn("and now?", "ok"))
+        self.assertEqual([r["text"] for r in self.main_rows()],
+                         ["hi", "hello", "look\n[screenshot]", "a cat", "and now?", "ok"])
+
     def test_a_row_appended_during_a_sync_is_logged_by_the_next(self):
         # Hermes hands sync_turn its live list on a background worker while the next turn appends to it.
         class Growing(list):
@@ -225,7 +239,7 @@ class IngestTest(Fixture):
         p.sync_turn("and this?", "a dog", session_id="s2",
                     messages=[string_turn, {"role": "assistant", "content": "a dog"}])
         users = [r["text"] for r in self.main_rows() if r["kind"] == "user"]
-        self.assertEqual(users, ["first", "look at this\n[image]", "and this?"])
+        self.assertEqual(users, ["first", "look at this\n[screenshot]", "and this?"])
 
     def test_tool_results_are_clipped_head_and_tail(self):
         p = self.provider(cfg=Config(cap_chars=1000))

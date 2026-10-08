@@ -40,7 +40,8 @@ def pages(text: str, limit: int) -> List[str]:
 
 
 def text_of(content: Any) -> str:
-    """Text parts only: thinking blocks are never logged (spec §1)."""
+    """Text parts only: thinking blocks are never logged (spec §1). An image is "[screenshot]",
+    as Hermes's session DB stores it, so a turn reads the same live and reloaded."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -51,7 +52,7 @@ def text_of(content: Any) -> str:
             if p.get("type") in ("text", "input_text", "output_text"):
                 parts.append(p.get("text") or "")
             elif p.get("type") in ("image_url", "image", "input_image"):
-                parts.append("[image]")
+                parts.append("[screenshot]")
         return "\n".join(x for x in parts if x)
     return ""
 
