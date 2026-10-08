@@ -150,7 +150,9 @@ class InjectionTest(Fixture):
             [sys.executable, "-c",
              "import fcntl, os, sys, time\n"
              f"fd = os.open({str(self.home / 'optchat' / 'lock')!r}, os.O_RDWR)\n"
-             "fcntl.flock(fd, fcntl.LOCK_EX)\nprint('locked', flush=True)\ntime.sleep(60)\n"],
+             "try:\n    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+             "except BlockingIOError:\n    print('still held', flush=True)\n    sys.exit(1)\n"
+             "print('locked', flush=True)\ntime.sleep(60)\n"],
             stdout=subprocess.PIPE, text=True)
         try:
             self.assertEqual(holder.stdout.readline().strip(), "locked")
