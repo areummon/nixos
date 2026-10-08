@@ -23,6 +23,22 @@ def cap(text: str, limit: int) -> str:
     return text[:half] + marker.format(len(text) - 2 * half) + text[-half:]
 
 
+def pages(text: str, limit: int) -> List[str]:
+    """Long text is never cut but logged as several messages in a row (spec §1), each at most
+    ``limit`` characters, split at a line end or else a space where one falls in its second half."""
+    out = []
+    text = text.strip()
+    while len(text) > limit:
+        cut = text.rfind("\n", limit // 2, limit)
+        if cut < 0:
+            cut = text.rfind(" ", limit // 2, limit)
+        if cut < 0:
+            cut = limit
+        out.append(text[:cut].strip())
+        text = text[cut:].strip()
+    return [p for p in out + [text] if p]
+
+
 def text_of(content: Any) -> str:
     """Text parts only: thinking blocks are never logged (spec §1)."""
     if isinstance(content, str):
@@ -60,18 +76,14 @@ def rows_of(msg: Dict[str, Any], *, cap_chars: int) -> List[Row]:
     """The rows one authored message logs, each text stripped as the log stores it."""
     role = msg.get("role")
     if role == "user":
-        text = text_of(msg.get("content")).strip()
-        return [("user", text)] if text else []
+        return [("user", p) for p in pages(text_of(msg.get("content")), cap_chars)]
     if role == "assistant":
-        out: List[Row] = []
-        text = text_of(msg.get("content")).strip()
-        if text:
-            out.append(("talk", text))
+        out: List[Row] = [("talk", p) for p in pages(text_of(msg.get("content")), cap_chars)]
         for call in msg.get("tool_calls") or []:
             fn = (call or {}).get("function") or {}
             args = fn.get("arguments")
             args = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
-            out.append(("tool", f"{fn.get('name') or '?'} {args or '{}'}".strip()))
+            out += [("tool", p) for p in pages(f"{fn.get('name') or '?'} {args or '{}'}", cap_chars)]
         return out
     if role == "tool":
         text = text_of(msg.get("content")).strip()

@@ -226,6 +226,23 @@ class IngestTest(Fixture):
         self.assertLessEqual(len(echo["text"]), 1000)
         self.assertTrue(echo["text"].startswith("HEAD") and echo["text"].endswith("TAIL"))
 
+    def test_long_text_is_logged_as_several_messages_in_a_row(self):
+        p = self.provider(cfg=Config(cap_chars=1000))
+        reply = "\n".join(f"line {k} " + "word " * 12 for k in range(60))
+        p.sync_turn("go", reply, session_id="s1", messages=turn("go", reply))
+        p.on_delegation("audit", "finding " * 300, child_session_id="kid")
+        rows = self.main_rows()
+        talk = [r["text"] for r in rows if r["kind"] == "talk"]
+        self.assertGreater(len(talk), 3)
+        self.assertTrue(all(len(t) <= 1000 for t in talk))
+        self.assertEqual("\n".join(talk).split(), reply.split())
+        self.assertTrue(all(t.startswith("line ") for t in talk), "cut at line ends")
+        work = [r["text"] for r in rows if r["kind"] == "work"]
+        self.assertEqual(len(work), 3)
+        self.assertEqual(" ".join(work).split(), ["[kid]", "task:", "audit"] + ["finding"] * 300)
+        p.sync_turn("go", reply, session_id="s1", messages=turn("go", reply))
+        self.assertEqual(len(self.main_rows()), len(rows), "split rows still align with the log")
+
     def test_subagent_context_never_writes(self):
         self.provider(session="parent")
         child = self.provider(session="child", agent_context="subagent")

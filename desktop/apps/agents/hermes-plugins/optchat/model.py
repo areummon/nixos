@@ -69,6 +69,7 @@ class Config:
     context_bytes: int = 32_000
     jobs: int = 8
     tries: int = 5
+    # The longest message logged: a tool result is clipped to it, any other text split (spec §1).
     cap_chars: int = 30_000
     # "model" calls the compactor model; "heuristic" never calls a model.
     compactor: str = "model"

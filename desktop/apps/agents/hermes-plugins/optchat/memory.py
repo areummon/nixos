@@ -17,7 +17,7 @@ from typing import Callable, Deque, Dict, List, Optional, Sequence, Set, Union
 
 from . import compaction
 from .compaction import Call, Job
-from .ingest import CHAT_KINDS, Authored, all_rows, carries_view, resume_point
+from .ingest import CHAT_KINDS, Authored, all_rows, carries_view, pages, resume_point
 from .model import Config, Kind, Message, Node, byte_len
 from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
 from .store import Store
@@ -126,13 +126,14 @@ class Memory:
         return grow(view, i, size=self._size, built=self._built, high=high, low=high // 2, force=force)
 
     def log(self, kind: Kind, text: str, source: Optional[str] = None) -> Optional[int]:
-        text = (text or "").strip()
-        if not text:
+        parts = pages(text or "", self.cfg.cap_chars)
+        if not parts:
             return None
         with self.lock:
             if not self.writable or self._closed:
                 return None
-            self._append(kind, text, source)
+            for part in parts:
+                self._append(kind, part, source)
         self.pump()
         return len(self.messages) - 1
 
