@@ -52,6 +52,7 @@ Each feature file has an H1, one paragraph, then exactly these H2s in order: `Su
 - [Pi coding agent](./agents-pi.md): Pi settings, permission policy, the gondolin VM sandbox and its host `nix` tool, the pstack sheet, and the optchat-memory extension.
 - [Hermes agent](./agents-hermes.md): the Discord gateway service, the OptChat memory provider, the local browser, plus the paused `news` and `jobs` profiles.
 - [Coding agents and global rules](./agents-coding.md): OpenCode (and `opencode-sandboxed`), Codex, `~/AGENTS.md`.
+- [Desktop apps](./desktop-apps.md): Firefox profile and browserpass, VS Code, mpv.
 - [Hyprland desktop](./desktop-hyprland.md): keybinds, idle/lock, wallpaper, waybar, wofi, notifications, clipboard.
 - [Shell and terminal](./shell-terminal.md): zsh, starship, kitty, neovim.
 - [System](./system.md): boot, nix settings, networking, audio, input methods, caps2esc, virtualisation.

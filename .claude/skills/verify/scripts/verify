@@ -80,10 +80,11 @@ case "$cmd" in
   file)
     [ $# -eq 1 ] || { usage; exit 2; }
     run=$(run_dir)
-    p="$(cat "$run/home-files.path")/${1#./}"
+    rel=${1#./}
+    p="$(cat "$run/home-files.path")/$rel"
     [ -e "$p" ] || { echo "not in built home files: $1" >&2; exit 1; }
-    slug=$(echo "$1" | tr '/' '_')
-    cat "$p" | tee "$run/file$slug.txt"
+    slug=$(echo "$rel" | tr '/' '_')
+    cat "$p" | tee "$run/file_$slug.txt"
     ;;
   diff-live)
     [ $# -eq 1 ] || { usage; exit 2; }

@@ -25,7 +25,7 @@ Owner: `nixos/configuration.nix`. Hardware and disks: `nixos/hardware-configurat
 Preconditions: `$V build` after the edit.
 
 - **Registry.** Run `$V eval nix.registry builtins.attrNames`, which gives `["nixpkgs"]`.
-- **Option value.** Run `$V eval services.pipewire.extraConfig`, or any other option path such as `networking.networkmanager.insertNameservers`. The JSON holds the new value.
+- **Option value.** Run `$V eval services.pipewire.extraConfig.pipewire`, or any other option path such as `networking.networkmanager.insertNameservers`. The JSON holds the new value.
 - **System package added.** Run `$V build`. The `status:` closure diff lists the package with `∅ → <version>`.
 - **Input bump.** After `nix flake update <input>`, run `$V build`. The closure diff shows the version changes. Run `$V hypr-check` too when `hyprland` moved.
 - **Systemd system unit.** Run `cat "$(cat $($V run)/toplevel.path)/etc/systemd/system/configure-sound-leds.service"`.
@@ -37,4 +37,5 @@ Preconditions: `$V build` after the edit.
 - `system.stateVersion` and `home.stateVersion` are `24.11` on purpose. Never bump them as part of an upgrade.
 - `flake-registry = ""` only turns off the global registry download. NixOS still pins `nixpkgs` in `/etc/nix/registry.json` to this system's 26.05 source, so `nixpkgs#foo` works and resolves to stable, not unstable. For unstable, use `nix shell --inputs-from . nixpkgs-unstable#foo`.
 - `environment.pathsToLink` adds `/share/xdg-desktop-portal` and `/share/applications` (portal `.desktop` files). Both are required by the home-manager portal setup in `home.nix`. Removing it breaks the file chooser in flatpak apps.
+- `$V eval services.pipewire.extraConfig` fails as a whole: nixpkgs made `extraConfig.client-rt` a removed option that throws when read. Evaluate the sub-key you edited (`.pipewire`, `.pipewire-pulse`, `.client`).
 - `pkgs` is 26.05 stable, and `pkgs.unstable` comes from the overlay. Mixing both for one package, such as Papirus, causes `buildEnv` conflicts (see the comment in `theme.nix`).

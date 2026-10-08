@@ -15,7 +15,7 @@ Owners: `desktop/apps/hyprland/hyprland.nix` (monitors, binds, rules, all in one
 
 ## How to get to it (user POV)
 
-- Log in on TTY1. zsh `profileExtra` runs `uwsm start default`.
+- Log in on TTY1. zsh `profileExtra` runs `uwsm start default` (through `systemd-cat -t uwsm_start`) when `uwsm check may-start && uwsm select` succeeds.
 - Press the binds above, click waybar modules, or wait for the idle timeouts.
 
 ## Driving it with verify

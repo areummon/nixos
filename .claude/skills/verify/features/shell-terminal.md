@@ -9,7 +9,7 @@ Owners: `desktop/shell/zsh.nix`, `desktop/shell/starship.nix`, `desktop/apps/kit
 - `zsh-aliases`: `update` (`sudo nixos-rebuild switch`), `sd` (fzf cd), plus the functions `opencode` and `codex-opencode`.
 - `zsh-keys`: vi mode, history prefix search on Up/Down, `^E` end-of-line.
 - `zsh-login`: `profileExtra` runs `exec systemd-cat -t uwsm_start uwsm start default` on TTY login when `uwsm check may-start && uwsm select` succeeds.
-- `zsh-integrations`: eza replaces `ls` (plus `ll`, `la`, `lt`), zoxide adds `z`/`zi`, and fzf adds Ctrl-R, Ctrl-T, and Alt-C. History is in `~/.local/share/zsh/history`.
+- `zsh-integrations`: eza replaces `ls` (plus `ll`, `la`, `lla`, `lt`), zoxide adds `z`/`zi`, and fzf adds Ctrl-R, Ctrl-T, and Alt-C. History is in `~/.local/share/zsh/history`.
 - `starship`: `~/.config/starship.toml`.
 - `kitty`: `~/.config/kitty/kitty.conf`.
 - `neovim`: `~/.config/nvim/{init.lua,lua/,LuaSnip/}` plus the plugin pack. `vi`/`vim` alias to nvim. Leader is Space, localleader `,`. Telescope is on `<leader>ff/fg/fb/fh`, while `<leader>fc` runs `TypstWatch` and `<leader>fr` opens the PDF in zathura. LSP enables rust_analyzer, hls, clangd, zls, and tinymist, but the module ships only `tinymist` (and `ripgrep`); the other servers start only when their binary is on PATH, for example from a direnv devshell.
@@ -27,6 +27,7 @@ Preconditions: `$V build` after the edit.
 - **Login hook.** Run `$V diff-live .zprofile`.
 - **Prompt.** Run `$V diff-live .config/starship.toml`.
 - **kitty.** Run `$V diff-live .config/kitty/kitty.conf`.
+- **fd ignore.** Run `$V diff-live .config/fd/ignore`.
 - **neovim Lua.** Run `$V diff-live .config/nvim/init.lua`. For files in `lua/` or `LuaSnip/`, `$V ls .config/nvim` and then `$V file .config/nvim/lua/keymaps.lua`.
 - **neovim loads.** Run `XDG_CONFIG_HOME=$(cat $($V run)/home-files.path)/.config nvim --headless +qa 2>&1`. Output must be empty. nvim exits 0 even on `E5113` Lua errors, so judge by the output, not the exit code. Plugins come from the live profile, so this tests Lua config against the installed plugins. To check keymaps, run the same command with `+'lua io.write(vim.inspect({vim.g.mapleader, vim.g.maplocalleader, vim.fn.maparg(" ff","n")}))'` before `+qa`, which prints `{ " ", ",", "<Cmd>Telescope find_files<CR>" }`.
 
