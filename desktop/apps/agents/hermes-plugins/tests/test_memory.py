@@ -376,7 +376,7 @@ class InjectionTest(Fixture):
         view = p.prefetch("q", session_id="s1")
         head = [self.sent("q", view), {"role": "assistant", "content": "a"}]
         p.sync_turn("q", "a", session_id="s1", messages=head)
-        p.on_session_switch("b1", parent_session_id="s1", reset=False)
+        p.on_session_switch("b1", parent_session_id="s1", reset=False, reason="branch")
         self.assertEqual(p.prefetch("q", session_id="b1"), "", "a branch copies the history, view and all")
         # The first compression keeps the protected head, and the view in it.
         p.on_session_switch("s2", parent_session_id="s1", reset=False, reason="compression")
@@ -386,6 +386,18 @@ class InjectionTest(Fixture):
         p.on_session_switch("s3", parent_session_id="s2", reset=False, reason="compression")
         p.sync_turn("more", "ok", session_id="s3", messages=turn("more", "ok"))
         self.assertTrue(p.prefetch("next", session_id="s3"))
+
+    def test_resume_keeps_the_resumed_sessions_own_history(self):
+        # /resume names the session it left as parent_session_id; that session is no ancestor.
+        p = self.provider()
+        p.sync_turn("hello", "hi", session_id="s0", messages=turn("hello", "hi"))
+        view = p.prefetch("q", session_id="s1")
+        p.sync_turn("q", "a", session_id="s1", messages=[self.sent("q", view), {"role": "assistant", "content": "a"}])
+        p.on_session_switch("s2", parent_session_id="s1", reset=True, reason="new_session")
+        p.on_session_switch("s1", parent_session_id="s2", reset=False, reason="resume")
+        self.assertEqual(p.prefetch("next", session_id="s1"), "", "s1's history still carries its view")
+        parents = self.home / "optchat" / "parents.json"
+        self.assertNotIn("s1", json.loads(parents.read_text()) if parents.exists() else {})
 
     def test_two_instances_in_one_process_share_the_writer(self):
         a = self.provider(session="discord-1")

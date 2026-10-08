@@ -166,15 +166,17 @@ class OptChatProvider(MemoryProvider):
         return ""
 
     def on_session_switch(self, new_session_id: str, *, parent_session_id: str = "", reset: bool = False,
-                          rewound: bool = False, **kwargs) -> None:
+                          **kwargs) -> None:
         self._session_id = new_session_id
-        if not self._mem:
+        reason = kwargs.get("reason")
+        # Only a compression or a /branch carries the parent's history forward; /resume names the
+        # session it left, which is no ancestor of the one resumed.
+        if not (self._mem and reason in ("compression", "branch")):
             return
-        if not reset:
-            self._mem.link(new_session_id, parent_session_id)
-        if kwargs.get("reason") == "compression":
+        self._mem.link(new_session_id, parent_session_id)
+        if reason == "compression":
             self._mem.forget_view(new_session_id)
-        elif parent_session_id and not reset:
+        elif parent_session_id:
             self._mem.inherit_view(new_session_id, parent_session_id)
 
     def on_delegation(self, task: str, result: str, *, child_session_id: str = "", **kwargs) -> None:
