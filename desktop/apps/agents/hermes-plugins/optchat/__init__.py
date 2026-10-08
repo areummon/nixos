@@ -62,10 +62,13 @@ def _load_config() -> Config:
 
 
 def _clean_user(text: str) -> Optional[str]:
-    """A /skill turn embeds the skill body; log only the user's instruction."""
+    """The user's own words: without the <memory-context> block Hermes appends to multimodal
+    content (string content keeps it in the api_content sidecar instead), and for a /skill turn
+    the instruction alone, not the skill body."""
+    from agent.memory_manager import sanitize_context
     from agent.skill_commands import extract_user_instruction_from_skill_message
 
-    return extract_user_instruction_from_skill_message(text)
+    return extract_user_instruction_from_skill_message(sanitize_context(text))
 
 
 def _warn_if_view_spills(cfg: Config) -> None:

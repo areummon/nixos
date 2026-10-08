@@ -129,6 +129,27 @@ class IngestTest(Fixture):
         p.sync_turn("typed meanwhile", "", session_id="s1", messages=list(live))
         self.assertEqual([r["text"] for r in self.main_rows()], ["a", "b", "typed meanwhile"])
 
+    def test_the_injected_view_is_not_logged_as_user_words(self):
+        from agent.memory_manager import build_memory_context_block
+
+        p = self.provider()
+        p.sync_turn("first", "ok", session_id="s0", messages=turn("first", "ok"))
+        fence = build_memory_context_block(p.prefetch("look", session_id="s1"))
+        self.assertIn("<chat>", fence)
+        # Hermes appends the fenced view to multimodal (list) content as a durable text part.
+        image_turn = {"role": "user", "content": [
+            {"type": "text", "text": "look at this"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+            {"type": "text", "text": fence},
+        ]}
+        p.sync_turn("look at this", "a cat", session_id="s1",
+                    messages=[image_turn, {"role": "assistant", "content": "a cat"}])
+        string_turn = {"role": "user", "content": "and this?\n\n" + fence}
+        p.sync_turn("and this?", "a dog", session_id="s2",
+                    messages=[string_turn, {"role": "assistant", "content": "a dog"}])
+        users = [r["text"] for r in self.main_rows() if r["kind"] == "user"]
+        self.assertEqual(users, ["first", "look at this\n[image]", "and this?"])
+
     def test_tool_results_are_clipped_head_and_tail(self):
         p = self.provider(cfg=Config(cap_chars=1000))
         out = "HEAD" + "x" * 5000 + "TAIL"
