@@ -3,8 +3,15 @@
   lib,
   config,
   ...
-}: {
+}: let
+  # nixpkgs Chromium for agent-browser (its own download fails on NixOS).
+  chromiumPath = "${pkgs.unstable.chromium}/bin/chromium";
+in {
   programs.hermes-agent.enable = true;
+
+  # Local browser automation for Hermes's browser_* tools.
+  home.packages = [pkgs.unstable.agent-browser pkgs.unstable.chromium];
+  home.sessionVariables.AGENT_BROWSER_EXECUTABLE_PATH = chromiumPath;
 
   services.hermes-agent = {
     enable = true;
@@ -23,14 +30,17 @@
       # a prefetch for a 1 KB preview (default 10,000 chars).
       hooks.output_spill.max_chars = 200000;
       terminal.backend = "local";
-      # Keyless Parallel (PARALLEL_API_KEY upgrades it to paid). Both keys stay explicit:
-      # unset, autodetect picks openai-native from the openai-codex login, which can't
-      # serve client-side search, and keyless Firecrawl answers 403. The activation
-      # merge never deletes keys, so naming both also overrides the stale firecrawl one.
+      # Nous Portal tools; "" = inherit web.backend ("nous" there fails).
       web = {
-        search_backend = "parallel";
-        extract_backend = "parallel";
+        backend = "nous";
+        search_backend = "";
+        extract_backend = "";
       };
+      image_gen.provider = "nous";
+      tts.provider = "nous";
+      # Local agent-browser instead of paid Browser Use cloud/CLI.
+      browser.cloud_provider = "local";
+      browser.backend = "local";
       discord = {
         require_mention = true;
         auto_thread = true;
@@ -70,6 +80,7 @@
       "HERMES_HOME=${config.home.homeDirectory}/.hermes"
       "HERMES_MANAGED=home-manager"
       "OBSIDIAN_VAULT_PATH=${config.home.homeDirectory}/Documents/study_vault"
+      "AGENT_BROWSER_EXECUTABLE_PATH=${chromiumPath}"
       "PATH=/run/current-system/sw/bin:/etc/profiles/per-user/${config.home.username}/bin:/run/wrappers/bin"
     ];
     PrivateTmp = true;
