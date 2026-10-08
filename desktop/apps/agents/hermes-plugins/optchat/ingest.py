@@ -90,6 +90,8 @@ def new_rows(messages: Sequence[Dict[str, Any]], cursor: Optional[Cursor], *, ca
     seen before (a new process, a resumed or compressed session, a rewritten one) holds history an
     earlier sync already logged: only its last turn is new.
     """
+    # Hermes passes its live list, which the next turn may grow while this reads it.
+    messages = list(messages)
     known = (cursor is not None and cursor.count <= len(messages)
              and (cursor.count == 0 or fingerprint(messages[cursor.count - 1]) == cursor.last))
     start = cursor.count if known else turn_start(messages)

@@ -104,6 +104,31 @@ class IngestTest(Fixture):
         p.sync_turn("c", "d", session_id="s2", messages=history)
         self.assertEqual([r["text"] for r in self.main_rows()], ["c", "d"])
 
+    def test_a_row_appended_during_a_sync_is_logged_by_the_next(self):
+        # Hermes hands sync_turn its live list on a background worker while the next turn appends to it.
+        class Growing(list):
+            """Gains a row right after the sync first reads it."""
+
+            grown = False
+
+            def _read(self, items):
+                if not self.grown:
+                    self.grown = True
+                    self.append({"role": "user", "content": "typed meanwhile"})
+                return items
+
+            def __iter__(self):
+                return iter(self._read(list(super().__iter__())))
+
+            def __getitem__(self, k):
+                return self._read(super().__getitem__(k)) if isinstance(k, slice) else super().__getitem__(k)
+
+        p = self.provider()
+        live = Growing(turn("a", "b"))
+        p.sync_turn("a", "b", session_id="s1", messages=live)
+        p.sync_turn("typed meanwhile", "", session_id="s1", messages=list(live))
+        self.assertEqual([r["text"] for r in self.main_rows()], ["a", "b", "typed meanwhile"])
+
     def test_tool_results_are_clipped_head_and_tail(self):
         p = self.provider(cfg=Config(cap_chars=1000))
         out = "HEAD" + "x" * 5000 + "TAIL"
