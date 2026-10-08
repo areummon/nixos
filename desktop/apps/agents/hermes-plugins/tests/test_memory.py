@@ -172,6 +172,15 @@ class IngestTest(Fixture):
         p.sync_turn("c", "ok", session_id="s1", messages=msgs + turn("c", "ok"))
         self.assertEqual([r["text"] for r in self.main_rows()], ["a", "ok", "b", "ok", "oops", "ok", "c", "ok"])
 
+    def test_turns_after_an_undo_are_logged_once(self):
+        p = self.provider()
+        kept = turn("a", "b") + turn("c", "d")
+        p.sync_turn("e", "f", session_id="s1", messages=kept + turn("e", "f"))
+        p.on_session_switch("s1", parent_session_id="", reset=False, rewound=True)
+        p.sync_turn("x", "y", session_id="s1", messages=kept + turn("x", "y"))
+        p.sync_turn("p", "q", session_id="s1", messages=kept + turn("x", "y") + turn("p", "q"))
+        self.assertEqual([r["text"] for r in self.main_rows()], list("abcdefxypq"))
+
     def test_a_row_appended_during_a_sync_is_logged_by_the_next(self):
         # Hermes hands sync_turn its live list on a background worker while the next turn appends to it.
         class Growing(list):

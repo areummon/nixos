@@ -96,26 +96,42 @@ def resume_point(rows: Sequence[Row], logged: Sequence[Row]) -> int:
 
     Hermes's list is not stable: a restart, a compression, a gateway reload from its DB or an
     /undo hands over a list this process never saw, or one rewritten in place. So rather than
-    trust an index, align the list with the log, two ways:
+    trust an index, align the list with the log, three ways:
 
     - the longest run of rows that ends the log, so logging resumes where it stopped. The
       earliest of equal runs wins, so a turn repeated word for word is logged again, not lost.
     - the longest start of the list found anywhere in the log: after an /undo the last logged
       rows are gone from the list, but the list still starts as the log did.
+    - both spliced: a start of the list found in the log, then the rows that end the log. After
+      an /undo and a new turn, the list keeps the log's start and its last rows, not the rows
+      between.
 
-    The alignment that matches more rows wins. With no match at all, every row is new.
+    The first two compete on how many rows they match; the splice, which accounts for every row
+    before its end, goes further when it can. With no match at all, every row is new.
     """
     if not logged:
         return 0
     n, m = len(rows), len(logged)
-    # z[m + 1 + n - e]: how many rows end both rows[:e] and logged.
-    z = _z([*reversed(logged), _SEP, *reversed(rows)])
+    # tail[m + 1 + n - e]: how many rows end both rows[:e] and logged.
+    tail = _z([*reversed(logged), _SEP, *reversed(rows)])
     run, end = 0, 0
     for e in range(1, n + 1):
-        if z[m + 1 + n - e] > run:
-            run, end = z[m + 1 + n - e], e
-    start = max(_z([*rows, _SEP, *logged])[n + 1:], default=0)
-    return start if start > run else end
+        if tail[m + 1 + n - e] > run:
+            run, end = tail[m + 1 + n - e], e
+    # head[j]: how many leading rows logged[j:] starts with.
+    head = _z([*rows, _SEP, *logged])[n + 1:]
+    start = max(head, default=0)
+    # within[k]: the longest start of the list found in logged[:k]; j is the first place a match
+    # still reaching k starts.
+    within, j = [0] * (m + 1), 0
+    for k in range(1, m + 1):
+        while j < k and j + head[j] < k:
+            j += 1
+        within[k] = max(within[k - 1], k - j)
+    # A longer tail never hurts the splice, so each end tries only its longest.
+    spliced = max((e for e in range(1, n + 1)
+                   if (z := tail[m + 1 + n - e]) and within[m - z] >= e - z), default=0)
+    return max(spliced, start if start > run else end)
 
 
 _SEP = object()
