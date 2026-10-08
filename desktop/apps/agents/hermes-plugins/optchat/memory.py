@@ -59,6 +59,7 @@ class Memory:
         # list; "landed" once one does, saved so a restart doesn't send a second copy.
         self._views: Dict[str, str] = {}
         # A compressed or branched session's parent: its rows are this session's history too.
+        # Saved, so a child whose first sync comes after a restart still resumes after them.
         self._parents: Dict[str, str] = {}
         # Ids of the messages each source logged from a session's list (CHAT_KINDS), in order.
         self._by_source: Dict[str, List[int]] = {}
@@ -72,6 +73,7 @@ class Memory:
             self.store.try_lock()
             self._load()
             self._views = dict.fromkeys(self.store.load_viewed(), "landed")
+            self._parents = self.store.load_parents()
             if self.writable:
                 self.store.save_view(self.view.parts)
                 self._seed()
@@ -170,8 +172,10 @@ class Memory:
 
     def link(self, session_id: str, parent_id: str) -> None:
         with self.lock:
-            if parent_id and parent_id != session_id:
+            if parent_id and parent_id != session_id and self._parents.get(session_id) != parent_id:
                 self._parents[session_id] = parent_id
+                if self.writable and not self._closed:
+                    self.store.save_parents(self._parents)
 
     def ingest(self, session_id: str, messages: Sequence[dict], platform: str, authored: Authored) -> int:
         """Log the rows of ``messages`` this session has not logged yet; returns how many."""

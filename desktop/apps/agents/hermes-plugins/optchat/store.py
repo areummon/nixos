@@ -137,6 +137,19 @@ class Store:
     def save_viewed(self, ids) -> None:
         self._replace("viewed.json", sorted(ids))
 
+    def load_parents(self) -> Dict[str, str]:
+        """Each compressed or branched session's parent (see Memory.link)."""
+        try:
+            links = json.loads((self.root / "parents.json").read_text())
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(links, dict):
+            return {}
+        return {k: v for k, v in links.items() if isinstance(k, str) and isinstance(v, str)}
+
+    def save_parents(self, links: Dict[str, str]) -> None:
+        self._replace("parents.json", links)
+
     def _replace(self, name: str, obj) -> None:
         assert self.writable, "optchat store is read-only"
         path = self.root / name

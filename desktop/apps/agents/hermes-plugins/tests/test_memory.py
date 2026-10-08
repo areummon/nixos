@@ -214,6 +214,18 @@ class IngestTest(Fixture):
         p.on_pre_compress(history + [{"role": "user", "content": "migrate"}] + turn("x", "y")[1:])
         self.assertEqual([r["text"] for r in self.main_rows()][4:], ["migrate", "y"])
 
+    def test_a_compressed_child_first_synced_after_a_restart_resumes_after_its_parent(self):
+        p = self.provider()
+        p.sync_turn("a", "b", session_id="s1", messages=turn("a", "b"))
+        live = turn("a", "b") + turn("migrate", "", tool=("migrate", {}, "12 tables"))[:-1]
+        p.on_pre_compress(live)
+        p.on_session_switch("s2", parent_session_id="s1", reset=False, reason="compression")
+        p.shutdown()
+        self.providers.remove(p)
+        p = self.provider(session="s2")
+        p.sync_turn("migrate", "done", session_id="s2", messages=live + [{"role": "assistant", "content": "done"}])
+        self.assertEqual([r["text"] for r in self.main_rows()], ["a", "b", "migrate", "migrate {}", "12 tables", "done"])
+
     def test_a_row_appended_during_a_sync_is_logged_by_the_next(self):
         # Hermes hands sync_turn its live list on a background worker while the next turn appends to it.
         class Growing(list):
