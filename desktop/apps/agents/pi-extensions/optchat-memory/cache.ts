@@ -1,22 +1,26 @@
-// Spec §8, Anthropic: `cache_control` on every view piece except the last (the
-// piece cut at each 50k/80k/100k mark), plus the request-end mark Pi adds to
-// the last message. At most 4 breakpoints per request, so the marks Pi puts on
-// the system blocks and the last tool are removed: the first view mark already
-// caches the tools and system prompt before it.
+// Spec §3.3, Anthropic: `cache_control` on the last whole view block, so the
+// next call, looking back up to 20 blocks from its own mark, finds this one and
+// writes only the lines after it. A second mark LOOKBACK blocks earlier covers
+// a turn that logs more than 20 blocks of lines. With Pi's mark on the last
+// system block and on the request end that makes 4, the API's limit, so Pi's
+// marks on earlier system blocks and on the last tool are removed.
 
 type Block = { type?: string; text?: string; cache_control?: unknown; [k: string]: unknown };
 type Message = { role?: string; content?: string | Block[] };
 
 const EPHEMERAL = { type: "ephemeral" };
+const LOOKBACK = 19;
 
-function stripMarks(blocks: unknown): void {
+function stripMarks(blocks: unknown, keepLast = false): void {
   if (!Array.isArray(blocks)) return;
-  for (const b of blocks) if (b && typeof b === "object") delete (b as Block).cache_control;
+  const end = keepLast ? blocks.length - 1 : blocks.length;
+  for (const b of blocks.slice(0, end)) if (b && typeof b === "object") delete (b as Block).cache_control;
 }
 
-// Returns the payload with breakpoints on `pieces[0..n-1)`, or undefined when
-// the request is not an Anthropic Messages request whose messages start with
-// exactly these pieces (then the request goes out unchanged).
+// Returns the payload with breakpoints on the view's whole blocks
+// (`pieces[0..n-1)`), or undefined when the request is not an Anthropic
+// Messages request whose messages start with exactly these pieces (then the
+// request goes out unchanged).
 export function markViewBreakpoints(payload: unknown, pieces: string[]): unknown | undefined {
   const params = payload as { system?: unknown; tools?: unknown; messages?: Message[] } | undefined;
   if (!params || !Array.isArray(params.messages) || pieces.length < 2) return undefined;
@@ -38,9 +42,11 @@ export function markViewBreakpoints(payload: unknown, pieces: string[]): unknown
   }
   if (targets.length !== pieces.length - 1) return undefined;
 
-  stripMarks(params.system);
+  stripMarks(params.system, true);
   stripMarks(params.tools);
-  for (const block of targets) block.cache_control = EPHEMERAL;
+  const last = targets.length - 1;
+  targets[last].cache_control = EPHEMERAL;
+  if (last >= LOOKBACK) targets[last - LOOKBACK].cache_control = EPHEMERAL;
 
   return params;
 }

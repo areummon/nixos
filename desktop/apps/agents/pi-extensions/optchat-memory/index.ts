@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { config } from "./config.ts";
 import { OptChatMemory } from "./memory.ts";
 import { markViewBreakpoints } from "./cache.ts";
-import { AGENT_GUIDE, MASTER_PROMPT, MEMORY_GUIDE, VIEW_DOC, splitAtMarks } from "./prompt.ts";
+import { AGENT_GUIDE, MASTER_PROMPT, MEMORY_GUIDE, VIEW_DOC, viewBlocks } from "./prompt.ts";
 import { writeHtml } from "./html.ts";
 import { cap, replyText, safeJson, textContent } from "./util.ts";
 import { isPstackChild, publishSnapshot, registerPstackMemory, removePublishedSnapshot, SNAPSHOT_ENV } from "./pstack-memory.ts";
@@ -104,12 +104,12 @@ export default function (pi: ExtensionAPI) {
   // One turn = one agent run (§7). Its view covers the messages before upTo,
   // the turn's own message excluded, and is reused byte-identical on every
   // step so the cached prefix holds; the turn's steps follow it verbatim.
-  type Turn = { upTo: number; view?: any[]; first?: any };
+  type Turn = { upTo: number; view?: string[]; first?: any };
   let turn: Turn | undefined;
 
   // No call sees an unsummarized line (§6): wait for the compactor however
   // long, inside the run so Esc aborts it and leaves the message unanswered.
-  const freeze = async (t: Turn, ctx: ExtensionContext): Promise<any[] | undefined> => {
+  const freeze = async (t: Turn, ctx: ExtensionContext): Promise<string[] | undefined> => {
     if (!mem.settled(t.upTo)) ctx.ui.setStatus("optchat", "mem: waiting for compactor (Esc cancels)");
     const settled = await mem.settle(ctx.signal, Infinity, t.upTo);
     ctx.ui.setStatus("optchat", `mem ${mem.root.length} msgs`);
@@ -119,7 +119,7 @@ export default function (pi: ExtensionAPI) {
       if (!(await globalMem.settle(ctx.signal))) return undefined;
       view = `${globalMem.renderView(Infinity, "global-memory")}\n${view}`;
     }
-    return splitAtMarks(view).map(content => ({ role: "user", content }));
+    return viewBlocks(view);
   };
 
   // Where the turn's messages begin: the message(s) that started the run,
@@ -147,10 +147,10 @@ export default function (pi: ExtensionAPI) {
     return { systemPrompt: `${event.systemPrompt ?? ""}\n\n${guide}\n\n${AGENT_GUIDE}\n\n${VIEW_DOC}` };
   });
 
-  // §8: cache breakpoints on the view pieces (Anthropic); other APIs pass through.
+  // §3.3: cache breakpoints on the view blocks (Anthropic); other APIs pass through.
   pi.on("before_provider_request", (event: any) => {
     if (!turn?.view || !mem.cfg.replaceContext) return;
-    return markViewBreakpoints(event.payload, turn.view.map((m: any) => m.content));
+    return markViewBreakpoints(event.payload, turn.view);
   });
 
   pi.on("agent_settled", async () => {
@@ -168,15 +168,16 @@ export default function (pi: ExtensionAPI) {
     }
     turn.view ??= await freeze(turn, ctx);
     if (!turn.view) return;
+    const view = { role: "user", content: turn.view.map(text => ({ type: "text", text })) };
     const messages = event.messages ?? [];
     // Pi requires its system message to stay first: [system] [view] [...].
     let head = 0;
     while (messages[head]?.role === "system") head++;
     const system = messages.slice(0, head);
     const rest = messages.slice(head);
-    if (!mem.cfg.replaceContext) return { messages: [...system, ...turn.view, ...rest] };
+    if (!mem.cfg.replaceContext) return { messages: [...system, view, ...rest] };
     // Fresh call per turn: the view, then only this turn's messages and steps.
-    return { messages: [...system, ...turn.view, ...rest.slice(turnStart(rest, turn))] };
+    return { messages: [...system, view, ...rest.slice(turnStart(rest, turn))] };
   });
 
   const needGlobal = (): OptChatMemory => {

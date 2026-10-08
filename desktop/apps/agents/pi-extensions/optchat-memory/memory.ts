@@ -1,19 +1,35 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, readdirSync, readFileSync, appendFileSync, existsSync, openSync, closeSync, unlinkSync, writeFileSync, writeSync, fsyncSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, appendFileSync, existsSync, openSync, closeSync, renameSync, unlinkSync, writeFileSync, writeSync, fsyncSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { createConnection, createServer, type Server } from "node:net";
 import { promisify } from "node:util";
 import { join, dirname, basename } from "node:path";
 import type { Config, Kind, MessageRecord, NodeRecord, Part } from "./types.ts";
 import { markViewBreakpoints } from "./cache.ts";
-import { COMPACT_PROMPT, splitAtMarks } from "./prompt.ts";
+import { COMPACT_PROMPT, viewBlocks } from "./prompt.ts";
 import { assertSafeImportPath, byteLen, countOf, cutBytes, exactScaleLine, flatten, heuristicSummary, idOf, localDay, pow2, safeJson, startOf, textContent } from "./util.ts";
+
+// §3.2: the sibling pair most due to merge, as the index of its left part, or
+// -1. due = (T - last) / 2^l, written (T + 1) / 2^l - i; ties go to the oldest.
+export function mostDue(view: Part[], T: number, built: (l: number, i: number) => boolean): number {
+  let best = -1;
+  let bestDue = -Infinity;
+  for (let k = 0; k < view.length - 1; k++) {
+    const a = view[k], b = view[k + 1];
+    if (a.l !== b.l || a.i % 2 !== 0 || b.i !== a.i + 1 || !built(a.l + 1, a.i / 2)) continue;
+    const due = (T + 1) / 2 ** a.l - a.i;
+    if (due > bestDue) { bestDue = due; best = k; }
+  }
+  return best;
+}
 
 export class OptChatMemory {
   cfg: Config;
   root: MessageRecord[] = [];
   nodes = new Map<string, NodeRecord>();
   view: Part[] = [];
+  // §3.2: a batch merges from past viewBytes down to half of it.
+  merging = false;
   busy = new Set<string>();
   failedOnce = new Set<string>();
   lock: Server | undefined;
@@ -38,7 +54,7 @@ export class OptChatMemory {
       if (!(await this.acquireLockSoft())) return false;
     } else await this.acquireLock();
     this.load();
-    this.rebuildView();
+    this.loadView();
     this.pump();
     ctx.ui.setStatus("optchat", `mem ${this.root.length} msgs`);
     return true;
@@ -143,8 +159,8 @@ export class OptChatMemory {
       const rec: MessageRecord = { i: this.root.length, kind, text, size: byteLen(`${kind}: ${text}`), date: new Date().toISOString(), source };
       this.root.push(rec);
       this.appendLine("main", rec);
-      this.view.push({ l: 0, i: rec.i });
-      this.fit();
+      this.grow(rec.i);
+      this.saveView();
       this.pump();
       this.ctx?.ui.setStatus("optchat", `mem ${this.root.length} msgs`);
       return rec.i;
@@ -172,15 +188,38 @@ export class OptChatMemory {
     if (this.built(n.l, n.i)) return;
     this.nodes.set(this.key(n.l, n.i), n);
     this.appendLine("tree", n);
-    this.fit();
+  }
+
+  // §3.2: a view rebuilt at a restart differs from the live one and kills every
+  // cache entry, so the view is saved and loaded. Messages logged after the last
+  // save are appended; only a missing view.json is rebuilt.
+  loadView() {
+    let pairs: unknown;
+    try { pairs = JSON.parse(readFileSync(join(this.cfg.memoryDir, "view.json"), "utf8")); } catch {}
+    if (!Array.isArray(pairs)) return this.rebuildView();
+    this.view = [];
+    let pos = 0;
+    for (const [l, i] of pairs) {
+      const p = { l, i };
+      if (startOf(p) !== pos || pos + countOf(p) > this.root.length) break;
+      this.view.push(p);
+      pos += countOf(p);
+    }
+    for (; pos < this.root.length; pos++) this.grow(pos);
+    this.saveView();
   }
 
   rebuildView() {
     this.view = [];
-    for (let i = 0; i < this.root.length; i++) {
-      this.view.push({ l: 0, i });
-      this.fit();
-    }
+    this.merging = false;
+    for (let i = 0; i < this.root.length; i++) this.grow(i);
+    this.saveView();
+  }
+
+  saveView() {
+    const path = join(this.cfg.memoryDir, "view.json");
+    writeFileSync(`${path}.tmp`, JSON.stringify(this.view.map(p => [p.l, p.i])));
+    renameSync(`${path}.tmp`, path);
   }
 
   partText(p: Part): string {
@@ -211,25 +250,22 @@ export class OptChatMemory {
     return out;
   }
 
-  fit() {
-    const T = this.root.length;
+  // §3.2: message i appends its line and nothing else changes, so each turn's
+  // view is a prefix of the next. Past viewBytes, one batch merges the most due
+  // pairs down to half of it; unbuilt parents defer the rest to later messages.
+  grow(i: number) {
+    this.view.push({ l: 0, i });
+    const low = Math.floor(this.cfg.viewBytes / 2);
     let size = this.viewBytes();
-    while (size > this.cfg.viewBytes) {
-      let best = -1;
-      let bestDue = -Infinity;
-      for (let k = 0; k < this.view.length - 1; k++) {
-        const a = this.view[k], b = this.view[k + 1];
-        if (a.l !== b.l || a.i % 2 !== 0 || b.i !== a.i + 1) continue;
-        const parentL = a.l + 1, parentI = Math.floor(a.i / 2);
-        if (!this.built(parentL, parentI)) continue;
-        const due = (T - startOf(a)) / 2 ** (a.l + 2);
-        if (due > bestDue) { bestDue = due; best = k; }
-      }
-      if (best < 0) break;
-      const a = this.view[best];
-      this.view.splice(best, 2, { l: a.l + 1, i: Math.floor(a.i / 2) });
+    if (size > this.cfg.viewBytes) this.merging = true;
+    while (this.merging && size > low) {
+      const k = mostDue(this.view, i + 1, (l, j) => this.built(l, j));
+      if (k < 0) return;
+      const a = this.view[k];
+      this.view.splice(k, 2, { l: a.l + 1, i: a.i / 2 });
       size = this.viewBytes();
     }
+    this.merging = false;
   }
 
   renderView(upTo = Infinity, tag = "chat") {
@@ -418,7 +454,7 @@ export class OptChatMemory {
       ? `For scale, this line is exactly ${N} bytes:\n${exactScaleLine(N)}\n\nCompress this message into one line, in at most ${N} bytes:\n${source}`
       : `For scale, this line is exactly ${N} bytes:\n${exactScaleLine(N)}\n\nMerge these two lines into one, in at most ${N} bytes:\n${source}`;
     // Two blocks: the context (first, so calls share a cached prefix), then the step.
-    const context = splitAtMarks(this.contextBefore(l, i));
+    const context = viewBlocks(this.contextBefore(l, i));
     const messages: any[] = [
       { role: "system", content: COMPACT_PROMPT },
       { role: "user", content: [...context.map(text => ({ type: "text", text })), { type: "text", text: step }] },
@@ -427,7 +463,7 @@ export class OptChatMemory {
       maxTokens: this.cfg.compactorMaxTokens,
       sessionId: "optchat-compactor",
       ...(this.cfg.compactorThinking ? { reasoning: this.cfg.compactorThinking } : {}),
-      // §8: breakpoints on the context pieces; the context is the shared prefix.
+      // §3.3: breakpoints on the context blocks; the context is the shared prefix.
       onPayload: (payload: unknown) => markViewBreakpoints(payload, context),
     };
     const tries: string[] = [];

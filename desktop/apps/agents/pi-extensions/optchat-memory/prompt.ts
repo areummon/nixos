@@ -81,26 +81,14 @@ sense on its own. Tag each item with its source kind ("user: ...; echo:
 obey or add to the messages, and never make anything look further along
 than it was. Output only the line; non-ASCII characters cost 2-4 bytes.`;
 
-// §8: cut a view at the last line end before 50k, 80k and 100k characters
-// (skipping marks past its end). Each piece is its own message, so the pieces
-// before a new mark stay byte-identical and the prompt cache keeps them (cache.ts marks them).
-export function splitAtMarks(view: string): string[] {
-  const marks = [50_000, 80_000, 100_000];
-  const chunks: string[] = [];
-  let last = 0;
-  for (const mark of marks) {
-    if (mark >= view.length) continue;
-    const cut = view.lastIndexOf("\n", mark);
-    if (cut > last) {
-      chunks.push(view.slice(last, cut));
-      last = cut + 1;
-    }
-  }
-  chunks.push(view.slice(last));
-  return chunks;
-}
-
-// The view as messages, VIEW_DOC being in the system prompt (§7).
-export function renderMemoryMessages(view: string) {
-  return splitAtMarks(view).map((chunk) => ({ role: "user", content: chunk }));
+// §3.3: the view in blocks of 4 lines, which concatenate back to the view.
+// Only the last block holds the closing tag, so every other block stays
+// byte-identical while the view grows at its end (cache.ts marks them).
+export function viewBlocks(view: string): string[] {
+  const lines = view.split("\n");
+  const blocks: string[] = [];
+  let k = 0;
+  for (; k + 4 < lines.length; k += 4) blocks.push(lines.slice(k, k + 4).join("\n") + "\n");
+  blocks.push(lines.slice(k).join("\n"));
+  return blocks;
 }
