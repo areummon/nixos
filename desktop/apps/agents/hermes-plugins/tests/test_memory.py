@@ -482,6 +482,46 @@ class StoreTest(Fixture):
         self.assertEqual(events, [("fsync", tmp), ("replace", tmp), ("fsync", root)])
         self.assertEqual(store.load_parents(), {"s2": "s1"})
 
+    def test_a_new_file_or_directory_is_on_disk_once_its_parent_is_synced(self):
+        # An fsynced append survives a power loss only if the directory entry naming its file
+        # does too: a new day file syncs its directory once, and each open syncs the directories.
+        import os
+        from unittest import mock
+
+        from optchat.model import Message, Node
+        from optchat.store import Store
+
+        events = []
+        real_fsync = os.fsync
+
+        def fsync(fd):
+            events.append(os.path.realpath(f"/proc/self/fd/{fd}"))
+            real_fsync(fd)
+
+        store = Store(self.home / "optchat")
+        day1, day2 = "2026-10-01T09:00:00-06:00", "2026-10-02T09:00:00-06:00"
+        with mock.patch("optchat.store.os.fsync", fsync):
+            self.assertTrue(store.try_lock())
+            store.append_message(Message(0, "user", "a", 7, day1))
+            store.append_message(Message(1, "talk", "b", 7, day1))
+            store.append_message(Message(2, "user", "c", 7, day2))
+            store.append_node(Node(0, 0, "a", 1))
+            store.append_node(Node(0, 1, "b", 1))
+            store.unlock()
+            self.assertTrue(Store(self.home / "optchat").try_lock())
+        home, root = os.path.realpath(self.home), os.path.realpath(store.root)
+        main, tree = os.path.join(root, "main"), os.path.join(root, "tree")
+        tree_day = next(iter(os.listdir(tree)))
+        self.assertEqual(events, [
+            home, root, main, tree,
+            f"{main}/2026-10-01.jsonl", main,
+            f"{main}/2026-10-01.jsonl",
+            f"{main}/2026-10-02.jsonl", main,
+            f"{tree}/{tree_day}", tree,
+            f"{tree}/{tree_day}",
+            home, root, main, tree,
+        ])
+
 
 class ZoomTest(Fixture):
     def test_zoom_one_is_whole_and_zoom_n_is_two_children(self):

@@ -43,6 +43,10 @@ class Store:
         self._lock_fd = fd
         for sub in ("main", "tree"):
             (self.root / sub).mkdir(exist_ok=True)
+        # The entries for these directories and the files in them, which a power loss would drop
+        # unless synced. Every open syncs them, as a crashed writer may have made one and not.
+        for d in (self.root.parent, self.root, self.root / "main", self.root / "tree"):
+            _fsync_dir(d)
         return True
 
     def unlock(self) -> None:
@@ -112,10 +116,13 @@ class Store:
     def _append(self, sub: str, obj: dict, when: datetime) -> None:
         assert self.writable, "optchat store is read-only"
         path = self.root / sub / f"{when:%Y-%m-%d}.jsonl"
+        new = not path.exists()
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
             f.flush()
             os.fsync(f.fileno())
+        if new:
+            _fsync_dir(path.parent)
 
     def append_message(self, m: Message) -> None:
         self._append("main", m.to_json(), datetime.fromisoformat(m.date))
@@ -159,8 +166,12 @@ class Store:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
-        fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        _fsync_dir(self.root)
+
+
+def _fsync_dir(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
