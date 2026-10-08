@@ -41,6 +41,10 @@
       security = {
         redact_secrets = true;
         tirith_enabled = true;
+        # Nix supplies the runtime tools. A lazy download lands generic-linux binaries
+        # NixOS can't exec, and its ~/.hermes/tools/facts.json makes the startup check
+        # demand pm copies of node/npm/ffmpeg/ripgrep ("install out of sync").
+        allow_lazy_installs = false;
       };
       privacy.redact_pii = true;
       fallback_providers = [
