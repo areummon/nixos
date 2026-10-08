@@ -7,7 +7,8 @@ Owners: `desktop/apps/agents/hermes-agent-local.nix` (gateway and main settings)
 ## Sub-features
 
 - `hermes-gateway`: `hermes-agent.service` (`hermes gateway`). The base unit comes from the upstream module (`WantedBy=default.target`, `UMask=0077`, `NoNewPrivileges`, restart); `systemd.user.services.hermes-agent.Service` adds hardening (`Delegate=true`, `ProtectSystem=full`, address-family limits) and a forced `Environment`.
-- `hermes-settings`: main `~/.hermes/config.yaml` from `services.hermes-agent.settings` (model and fallback, `gateway.multiplex_profiles = false`, `memory.provider = "optchat"` and `memory.optchat.compactor_model`, `hooks.output_spill.max_chars = 200000`, `terminal.backend = "local"`, `web.extract_backend = "firecrawl"` on the keyless tier, discord with `require_mention`, approvals, `privacy.redact_pii`). Activation merges these keys into the existing file, so keys Hermes wrote at runtime survive. `environmentFiles` (`~/.secrets/{openrouter,discord}.env`) are written into `~/.hermes/.env`, which activation rewrites from scratch.
+- `hermes-settings`: main `~/.hermes/config.yaml` from `services.hermes-agent.settings` (model and fallback, `memory.provider = "optchat"` and `memory.optchat.compactor_model`, `hooks.output_spill.max_chars = 200000`, `terminal.backend = "local"`, `web.backend = "nous"` with empty `search_backend`/`extract_backend` so both inherit it, `image_gen.provider` and `tts.provider` = `"nous"`, discord with `require_mention`, approvals, `security.allow_lazy_installs = false`, `privacy.redact_pii`). Activation merges these keys into the existing file, so keys Hermes wrote at runtime survive. `environmentFiles` (`~/.secrets/{openrouter,discord}.env`) are written into `~/.hermes/.env`, which activation rewrites from scratch.
+- `hermes-browser`: the `browser_*` tools run locally (`browser.backend` and `browser.cloud_provider` = `"local"`) with nixpkgs `agent-browser` driving nixpkgs Chromium, since agent-browser's own Chromium download fails on NixOS. Both packages go in `home.packages`, and `AGENT_BROWSER_EXECUTABLE_PATH` points at Chromium both as a session variable and in the gateway unit's `Environment`.
 - `hermes-news` (paused): `profiles/news/{config.yaml,SOUL.md}`, plus `hermes-news-digest.service` and `.timer` (09:30, 5m random delay), posting a digest to a Discord channel ID.
 - `hermes-jobs` (paused): `profiles/jobs/{config.yaml,SOUL.md}`, plus `hermes-jobs-discovery` (08:30, no posting) and `hermes-jobs-verification` (09:00, posts to `#job-search`) services and timers, 15m random delay. Activation also creates `career_vault/Job Search/{Inbox (mode 700),Active}`.
 - `hermes-optchat`: the OptChat memory provider ("one chat that never ends"). `home.file` links `hermes-plugins/optchat` to `~/.hermes/plugins/optchat`. It logs every message of every session to `~/.hermes/optchat/{main,tree}/YYYY-MM-DD.jsonl` and `view.json`, compacts the log with Haiku through `call_llm`, injects the `<chat>` view on each session's first prefetch, and adds the `optchat_zoom` and `optchat_date` tools. The gateway holds the store's flock; a `hermes` CLI started meanwhile is read-only.
@@ -16,13 +17,13 @@ Owners: `desktop/apps/agents/hermes-agent-local.nix` (gateway and main settings)
 ## How to get to it (user POV)
 
 - Mention the bot in Discord. The gateway answers in a thread.
-- To re-enable news/jobs, uncomment their imports in `desktop/apps/agents/default.nix`, set `gateway.multiplex_profiles = true`, and switch.
+- To re-enable news/jobs, uncomment their imports in `desktop/apps/agents/default.nix` and switch. Hermes turns `gateway.multiplex_profiles` on by itself at gateway start, so the config doesn't set it.
 
 ## Driving it with verify
 
 Preconditions: `$V build` after the edit. Don't read `~/.secrets/` or any `.env` file.
 
-- **Gateway unit.** Run `$V file .config/systemd/user/hermes-agent.service`. `ExecStart=.../bin/hermes gateway`, the four `Environment=` lines (`HERMES_HOME`, `HERMES_MANAGED`, `OBSIDIAN_VAULT_PATH`, `PATH`), `Delegate=true`, and `ProtectSystem=full` match the edit.
+- **Gateway unit.** Run `$V file .config/systemd/user/hermes-agent.service`. `ExecStart=.../bin/hermes gateway`, the five `Environment=` lines (`HERMES_HOME`, `HERMES_MANAGED`, `OBSIDIAN_VAULT_PATH`, `AGENT_BROWSER_EXECUTABLE_PATH`, `PATH`), `Delegate=true`, and `ProtectSystem=full` match the edit.
 - **Main settings.** Run `$V eval home-manager.users.moka.services.hermes-agent.settings`. The JSON shows the intended model, fallback, or approval values.
 - **OptChat plugin.** Run `$V ls .hermes/plugins`, which lists `.hermes/plugins/optchat/plugin.yaml` and the `.py` files. New plugin files must be git-tracked, or the flake leaves them out.
 - **OptChat tests.** Run them on the Python inside the gateway's Hermes, from `desktop/apps/agents/hermes-plugins`: `PY=$(dirname "$(sed -n 's/^exec "\([^"]*\)".*/\1/p' "$(readlink -f "$(command -v hermes)")")")/python3; $PY -m unittest discover -s tests -t tests`. To prove discovery, copy `optchat/` into a scratch `HERMES_HOME/plugins/`, write a `config.yaml` with `memory: {provider: optchat}`, and run `HERMES_HOME=<scratch> hermes memory status`. It shows `Plugin: installed ✓` and `Status: available ✓`.
@@ -38,6 +39,7 @@ Preconditions: `$V build` after the edit. Don't read `~/.secrets/` or any `.env`
 - Starting a unit to test it spends model quota, writes to the vault, and posts to Discord. Treat it as a production action.
 - A memory provider's directory name is its `memory.provider` name. `services.hermes-agent.extraPlugins` links plugins as `nix-managed-<name>`, so OptChat uses `home.file` instead.
 - Hermes swaps any memory prefetch longer than `hooks.output_spill.max_chars` (10,000 by default) for a 1 KB preview. The OptChat view runs up to 128 KB, so the cap is raised to 200,000. The provider logs a warning when the cap is too low.
+- `security.allow_lazy_installs = false`, so Hermes never downloads a tool binary at runtime. A tool that needs one, like the browser, must get it from Nix. A lazy install leaves `~/.hermes/tools/facts.json` behind and triggers the "install out of sync" warning.
 - Model names aren't validated by the build. A typo builds fine and only fails at runtime.
 - `terminal.backend = "docker"` applies only to the paused `news` and `jobs` profiles and uses podman's docker compatibility (`virtualisation.podman.dockerCompat` in `nixos/configuration.nix`). The gateway uses the `local` backend.
 - The news digest and jobs verification post only when the reply has non-whitespace text. Both SOULs tell the model to reply with nothing when there is nothing to report.
