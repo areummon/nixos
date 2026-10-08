@@ -17,7 +17,7 @@ from typing import Callable, Deque, Dict, List, Optional, Sequence, Set, Union
 
 from . import compaction
 from .compaction import Call, Job
-from .ingest import CHAT_KINDS, Authored, all_rows, carries_view, pages, resume_point
+from .ingest import CHAT_KINDS, Authored, all_rows, carries_view, last_turn, pages, resume_point
 from .model import Config, Kind, Message, Node, byte_len
 from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
 from .store import Store
@@ -181,7 +181,10 @@ class Memory:
             if not self.writable or self._closed:
                 return 0
             # The list overlaps at most len(rows) logged rows; the slack covers rows an /undo dropped.
-            new = rows[resume_point(rows, self._logged(platform, session_id, 2 * len(rows) + 256)):]
+            logged = self._logged(platform, session_id, 2 * len(rows) + 256)
+            # History that matches nothing logged from this session predates the log (the provider
+            # was just enabled): it is not today's, so only the current turn is logged.
+            new = rows[resume_point(rows, logged) or last_turn(rows):]
             for kind, text in new:
                 self._append(kind, text, source_of(platform, session_id))
         self.pump()

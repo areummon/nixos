@@ -166,6 +166,7 @@ class IngestTest(Fixture):
     def test_a_rewound_list_logs_only_the_new_turn(self):
         p = self.provider()
         msgs = turn("a", "ok") + turn("b", "ok")
+        p.sync_turn("a", "ok", session_id="s1", messages=msgs[:2])
         p.sync_turn("b", "ok", session_id="s1", messages=msgs)
         p.sync_turn("oops", "ok", session_id="s1", messages=msgs + turn("oops", "ok"))
         p.on_session_switch("s1", parent_session_id="", reset=False, rewound=True)
@@ -175,6 +176,8 @@ class IngestTest(Fixture):
     def test_turns_after_an_undo_are_logged_once(self):
         p = self.provider()
         kept = turn("a", "b") + turn("c", "d")
+        p.sync_turn("a", "b", session_id="s1", messages=kept[:2])
+        p.sync_turn("c", "d", session_id="s1", messages=kept)
         p.sync_turn("e", "f", session_id="s1", messages=kept + turn("e", "f"))
         p.on_session_switch("s1", parent_session_id="", reset=False, rewound=True)
         p.sync_turn("x", "y", session_id="s1", messages=kept + turn("x", "y"))
@@ -189,11 +192,27 @@ class IngestTest(Fixture):
         reloaded = {"role": "user", "content": "[Wed 2026-10-07 09:00:00 UTC] look\n[screenshot]"}
         p = self.provider()
         first = turn("hi", "hello")
+        p.sync_turn("hi", "hello", session_id="s1", messages=first)
         p.sync_turn("look", "a cat", session_id="s1", messages=first + [image, {"role": "assistant", "content": "a cat"}])
         p.sync_turn("and now?", "ok", session_id="s1",
                     messages=first + [reloaded, {"role": "assistant", "content": "a cat"}] + turn("and now?", "ok"))
         self.assertEqual([r["text"] for r in self.main_rows()],
                          ["hi", "hello", "look\n[screenshot]", "a cat", "and now?", "ok"])
+
+    def test_a_session_older_than_the_log_logs_from_its_last_turn(self):
+        # Enabling the provider meets gateway sessions with history it never saw: logging all of
+        # it would date it today and summarize it row by row.
+        p = self.provider()
+        history = turn("old", "talk") + turn("older", "still", tool=("ls", {}, "a.txt"))
+        p.sync_turn("now", "ok", session_id="s1", messages=history + turn("now", "ok"))
+        self.assertEqual([r["text"] for r in self.main_rows()], ["now", "ok"])
+        # An /undo drops the one logged turn; the history before it is still not today's.
+        p.sync_turn("then", "sure", session_id="s1", messages=history + turn("then", "sure"))
+        self.assertEqual([r["text"] for r in self.main_rows()], ["now", "ok", "then", "sure"])
+        # Compression strikes mid-turn in another such session.
+        p.on_session_switch("s2")
+        p.on_pre_compress(history + [{"role": "user", "content": "migrate"}] + turn("x", "y")[1:])
+        self.assertEqual([r["text"] for r in self.main_rows()][4:], ["migrate", "y"])
 
     def test_a_row_appended_during_a_sync_is_logged_by_the_next(self):
         # Hermes hands sync_turn its live list on a background worker while the next turn appends to it.

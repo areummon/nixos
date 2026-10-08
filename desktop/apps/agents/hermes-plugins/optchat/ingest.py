@@ -135,6 +135,16 @@ def resume_point(rows: Sequence[Row], logged: Sequence[Row]) -> int:
     return max(spliced, start if start > run else end)
 
 
+def last_turn(rows: Sequence[Row]) -> int:
+    """Where the list's last user turn starts: the rows a session the log never saw logs."""
+    k = len(rows)
+    while k and rows[k - 1][0] != "user":
+        k -= 1
+    while k and rows[k - 1][0] == "user":
+        k -= 1
+    return k if any(kind == "user" for kind, _ in rows[:k]) else 0
+
+
 _SEP = object()
 
 
