@@ -6,6 +6,7 @@ from typing import Optional
 
 from .tree import Part
 
+PLACEHOLDER = "(not summarized yet: zoom it)"
 _VIEW_FORMAT = """\
 Each line is
 
@@ -115,5 +116,5 @@ def too_long(size: int, limit: int, head: str) -> str:
 
 
 def render_line(part: Part, text: Optional[str]) -> str:
-    body = " ".join(text.split()) if text is not None else "(not summarized yet: zoom it)"
+    body = " ".join(text.split()) if text is not None else PLACEHOLDER
     return f"{part.name}|{body}"

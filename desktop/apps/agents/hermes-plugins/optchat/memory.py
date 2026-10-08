@@ -19,14 +19,14 @@ from . import compaction
 from .compaction import Call, Job
 from .ingest import CleanUser, Cursor, new_rows
 from .model import Config, Kind, Message, Node, byte_len
-from .prompt import leaf_task, merge_task, render_line
+from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
 from .store import Store
 from .tree import Part, View, contiguous_prefix, fit, grow, part_named, view_before
 
 logger = logging.getLogger(__name__)
 
 Spawn = Callable[..., threading.Thread]
-PLACEHOLDER_BYTES = byte_len(render_line(Part(0, 0), None).split("|", 1)[1])
+PLACEHOLDER_BYTES = byte_len(PLACEHOLDER)
 
 
 class Memory:
@@ -57,8 +57,6 @@ class Memory:
     @property
     def writable(self) -> bool:
         return self.store.writable
-
-    # -- loading -------------------------------------------------------------
 
     def open(self) -> "Memory":
         with self.lock:
@@ -103,8 +101,6 @@ class Memory:
         with self.lock:
             if not self.writable and self.store.stamp() != self._stamp:
                 self._load()
-
-    # -- writing -------------------------------------------------------------
 
     def _built(self, p: Part) -> bool:
         return p in self.nodes
@@ -156,8 +152,6 @@ class Memory:
         self.pump()
         return len(rows)
 
-    # -- sessions ------------------------------------------------------------
-
     def take_injection(self, session_id: str) -> bool:
         """True the first time a session asks: its first prefetch carries the view, later ones don't,
         since Hermes replays each turn's prefetch block on every later request."""
@@ -171,8 +165,6 @@ class Memory:
         with self.lock:
             self._injected.discard(session_id)
             self._cursors.pop(session_id, None)
-
-    # -- reading -------------------------------------------------------------
 
     def _line(self, p: Part) -> str:
         n = self.nodes.get(p)
@@ -203,8 +195,6 @@ class Memory:
     def settled(self) -> bool:
         with self.lock:
             return not self._unbuilt_leaves and not self._running and not self._ready_merges
-
-    # -- compaction ----------------------------------------------------------
 
     def _requeue(self, p: Part) -> None:
         if p.l == 0:
