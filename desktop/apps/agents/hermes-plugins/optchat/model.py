@@ -77,7 +77,8 @@ class Config:
     compactor_model: str = "claude-haiku-4-5-20251001"
     compactor_max_tokens: int = 2048
     compactor_timeout: float = 120.0
-    # A session's view state and parent link are dropped once it goes this long without a sync.
+    # A session's view state and parent link are dropped once it goes this long without a sync;
+    # zero or less never drops them.
     forget_after_days: int = 30
 
     @staticmethod

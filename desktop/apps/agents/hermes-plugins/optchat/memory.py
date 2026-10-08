@@ -253,7 +253,9 @@ class Memory:
                 self._save_viewed(now)
 
     def _prune(self, entries: Dict[str, Stamped], now: float) -> bool:
-        """Drop the entries no sync touched within cfg.forget_after_days; True if any went."""
+        """Drop the entries no sync touched within cfg.forget_after_days (<= 0 keeps all); True if any went."""
+        if self.cfg.forget_after_days <= 0:
+            return False
         stale = [k for k, (_, t) in entries.items() if now - t >= self.cfg.forget_after_days * DAY]
         for k in stale:
             del entries[k]

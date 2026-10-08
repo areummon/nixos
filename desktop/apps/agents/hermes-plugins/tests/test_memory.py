@@ -451,6 +451,19 @@ class InjectionTest(Fixture):
             p = self.provider(session="live")
             self.assertEqual(p.prefetch("resumed", session_id="live"), "")
 
+    def test_a_limit_of_zero_or_less_forgets_nothing(self):
+        day, now = 86_400, [1_800_000_000.0]
+        for limit in (0, -5):
+            with self.subTest(limit=limit), self.clock(now):
+                p = self.provider(cfg=Config.from_mapping({"forget_after_days": limit}))
+                p.on_session_switch(f"c{limit}", parent_session_id="s0", reset=False, reason="branch")
+                self.assertIn(f"c{limit}", self.saved("parents.json"), "a new link survives its own save")
+                now[0] += 400 * day
+                p.on_session_switch(f"d{limit}", parent_session_id="s0", reset=False, reason="branch")
+                self.assertIn(f"c{limit}", self.saved("parents.json"), "an idle link is never dropped")
+                p.shutdown()
+                self.providers.remove(p)
+
     def test_files_from_before_the_times_were_kept_count_as_touched_at_load(self):
         day, now = 86_400, [1_800_000_000.0]
         root = self.home / "optchat"
