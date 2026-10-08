@@ -69,12 +69,19 @@ def _load_config() -> Config:
 def _authored(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """The message as its author wrote it, or None for one Hermes made up.
 
-    Compaction summaries and Hermes's own user-role nudges are dropped. A user row keeps only the
-    user's words: a summary merged into it is cut off, the <memory-context> block Hermes appends to
-    multimodal content goes (string content keeps it in the api_content sidecar instead), a
-    /skill turn keeps the instruction, not the skill body, and the gateway's leading timestamp goes,
-    as the log dates each row itself and a reloaded row must read as it did live.
+    Compaction summaries and Hermes's own user-role nudges are dropped. An assistant reply promoted
+    from reasoning gets its text back from the sidecar. A user row keeps only the user's words: a
+    summary merged into it is cut off, the <memory-context> block Hermes appends to multimodal
+    content goes (string content keeps it in the api_content sidecar instead), a /skill turn keeps
+    the instruction, not the skill body, and the gateway's leading timestamp goes, as the log dates
+    each row itself and a reloaded row must read as it did live.
     """
+    if msg.get("role") == "assistant" and not text_of(msg.get("content")).strip():
+        # A reasoning-only stop keeps content empty and its text in the api_content sidecar;
+        # a hidden row's sidecar is Hermes's placeholder, not the model's words.
+        promoted = msg.get("api_content")
+        if isinstance(promoted, str) and msg.get("display_kind") != "hidden":
+            return {**msg, "content": promoted}
     if msg.get("role") != "user":
         return None if is_compaction_summary_message(msg) else msg
     live = user_originated_turn_view(msg)

@@ -272,6 +272,19 @@ class IngestTest(Fixture):
         users = [r["text"] for r in self.main_rows() if r["kind"] == "user"]
         self.assertEqual(users, ["first", "look at this\n[screenshot]", "and this?"])
 
+    def test_a_reply_promoted_from_reasoning_is_logged_and_a_hidden_placeholder_is_not(self):
+        # A reasoning-only stop keeps content empty and replays its text from api_content.
+        promoted = {"role": "assistant", "content": "", "reasoning_content": "Use port 8080.",
+                    "api_content": "Use port 8080."}
+        hidden = {"role": "assistant", "content": "", "display_kind": "hidden", "api_content": "[response interrupted]"}
+        p = self.provider()
+        first = [{"role": "user", "content": "deploy"}, hidden]
+        p.sync_turn("deploy", "", session_id="s1", messages=first)
+        p.sync_turn("which port?", "Use port 8080.", session_id="s1",
+                    messages=first + [{"role": "user", "content": "which port?"}, promoted])
+        self.assertEqual([(r["kind"], r["text"]) for r in self.main_rows()],
+                         [("user", "deploy"), ("user", "which port?"), ("talk", "Use port 8080.")])
+
     def test_tool_results_are_clipped_head_and_tail(self):
         p = self.provider(cfg=Config(cap_chars=1000))
         out = "HEAD" + "x" * 5000 + "TAIL"
