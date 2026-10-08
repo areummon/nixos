@@ -17,7 +17,7 @@ from typing import Callable, Deque, Dict, List, Optional, Sequence, Set, Union
 
 from . import compaction
 from .compaction import Call, Job
-from .ingest import CHAT_KINDS, CleanUser, all_rows, resume_point
+from .ingest import CHAT_KINDS, Authored, all_rows, resume_point
 from .model import Config, Kind, Message, Node, byte_len
 from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
 from .store import Store
@@ -169,10 +169,10 @@ class Memory:
             if parent_id and parent_id != session_id:
                 self._parents[session_id] = parent_id
 
-    def ingest(self, session_id: str, messages: Sequence[dict], platform: str, clean_user: CleanUser) -> int:
+    def ingest(self, session_id: str, messages: Sequence[dict], platform: str, authored: Authored) -> int:
         """Log the rows of ``messages`` this session has not logged yet; returns how many."""
         # Hermes passes its live list, which the next turn may grow while this reads it.
-        rows = all_rows(list(messages), cap_chars=self.cfg.cap_chars, clean_user=clean_user)
+        rows = all_rows(list(messages), cap_chars=self.cfg.cap_chars, authored=authored)
         with self.lock:
             if not self.writable or self._closed:
                 return 0

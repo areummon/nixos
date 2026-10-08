@@ -15,9 +15,13 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from agent.context_compressor import is_compaction_summary_message, user_originated_turn_view
+from agent.memory_manager import sanitize_context
 from agent.memory_provider import MemoryProvider, spawn_context_thread
+from agent.skill_commands import extract_user_instruction_from_skill_message
 
 from .compaction import hermes_call
+from .ingest import text_of
 from .memory import Memory, acquire, release, source_of
 from .model import Config
 from .prompt import SYSTEM_PROMPT_BLOCK
@@ -61,14 +65,21 @@ def _load_config() -> Config:
         return Config()
 
 
-def _clean_user(text: str) -> Optional[str]:
-    """The user's own words: without the <memory-context> block Hermes appends to multimodal
-    content (string content keeps it in the api_content sidecar instead), and for a /skill turn
-    the instruction alone, not the skill body."""
-    from agent.memory_manager import sanitize_context
-    from agent.skill_commands import extract_user_instruction_from_skill_message
+def _authored(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The message as its author wrote it, or None for one Hermes made up.
 
-    return extract_user_instruction_from_skill_message(sanitize_context(text))
+    Compaction summaries and Hermes's own user-role nudges are dropped. A user row keeps only the
+    user's words: a summary merged into it is cut off, the <memory-context> block Hermes appends to
+    multimodal content goes (string content keeps it in the api_content sidecar instead), and a
+    /skill turn keeps the instruction, not the skill body.
+    """
+    if msg.get("role") != "user":
+        return None if is_compaction_summary_message(msg) else msg
+    live = user_originated_turn_view(msg)
+    if live is None:
+        return None
+    text = extract_user_instruction_from_skill_message(sanitize_context(text_of(live.get("content"))))
+    return {"role": "user", "content": text} if text else None
 
 
 def _warn_if_view_spills(cfg: Config) -> None:
@@ -94,6 +105,7 @@ class OptChatProvider(MemoryProvider):
         self._mem: Optional[Memory] = None
         self._writes = False
         self._platform = ""
+        self._session_id = ""
 
     @property
     def name(self) -> str:
@@ -111,6 +123,7 @@ class OptChatProvider(MemoryProvider):
         # process (the CLI while the gateway holds the lock).
         self._writes = self._mem.writable and kwargs.get("agent_context", "primary") == "primary"
         self._platform = str(kwargs.get("platform") or "")
+        self._session_id = session_id
         if not self._mem.writable:
             logger.info("optchat: %s is locked by another process; read-only", root)
         _warn_if_view_spills(cfg)
@@ -130,10 +143,17 @@ class OptChatProvider(MemoryProvider):
             return
         if messages is None:
             messages = [{"role": "user", "content": user_content}, {"role": "assistant", "content": assistant_content}]
-        self._mem.ingest(session_id, messages, self._platform, _clean_user)
+        self._mem.ingest(session_id, messages, self._platform, _authored)
+
+    def on_pre_compress(self, messages: List[Dict[str, Any]]) -> str:
+        """Compression can strike mid-turn, before sync_turn: log the rows about to be summarized."""
+        if self._mem and self._writes:
+            self._mem.ingest(self._session_id, messages, self._platform, _authored)
+        return ""
 
     def on_session_switch(self, new_session_id: str, *, parent_session_id: str = "", reset: bool = False,
                           rewound: bool = False, **kwargs) -> None:
+        self._session_id = new_session_id
         if self._mem:
             self._mem.forget_session(new_session_id)
             if not reset:

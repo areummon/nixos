@@ -8,7 +8,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from .model import Kind
 
 Row = Tuple[Kind, str]
-CleanUser = Callable[[str], Optional[str]]
+# The message as its author wrote it, or None for rows Hermes made up (compaction summaries, nudges).
+Authored = Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]
 # The kinds a session's message list turns into; ``note`` and ``work`` come from other hooks.
 CHAT_KINDS = frozenset({"user", "talk", "tool", "echo"})
 
@@ -22,7 +23,7 @@ def cap(text: str, limit: int) -> str:
     return text[:half] + marker.format(len(text) - 2 * half) + text[-half:]
 
 
-def _text(content: Any) -> str:
+def text_of(content: Any) -> str:
     """Text parts only: thinking blocks are never logged (spec §1)."""
     if isinstance(content, str):
         return content
@@ -39,15 +40,15 @@ def _text(content: Any) -> str:
     return ""
 
 
-def rows_of(msg: Dict[str, Any], *, cap_chars: int, clean_user: CleanUser) -> List[Row]:
-    """The rows one message logs, each text stripped as the log stores it."""
+def rows_of(msg: Dict[str, Any], *, cap_chars: int) -> List[Row]:
+    """The rows one authored message logs, each text stripped as the log stores it."""
     role = msg.get("role")
     if role == "user":
-        text = (clean_user(_text(msg.get("content"))) or "").strip()
+        text = text_of(msg.get("content")).strip()
         return [("user", text)] if text else []
     if role == "assistant":
         out: List[Row] = []
-        text = _text(msg.get("content")).strip()
+        text = text_of(msg.get("content")).strip()
         if text:
             out.append(("talk", text))
         for call in msg.get("tool_calls") or []:
@@ -57,7 +58,7 @@ def rows_of(msg: Dict[str, Any], *, cap_chars: int, clean_user: CleanUser) -> Li
             out.append(("tool", f"{fn.get('name') or '?'} {args or '{}'}".strip()))
         return out
     if role == "tool":
-        text = _text(msg.get("content")).strip()
+        text = text_of(msg.get("content")).strip()
         return [("echo", cap(text, cap_chars))] if text else []
     return []
 
@@ -106,9 +107,10 @@ def _z(s: Sequence[Any]) -> List[int]:
     return z
 
 
-def all_rows(messages: Sequence[Any], *, cap_chars: int, clean_user: CleanUser) -> List[Row]:
+def all_rows(messages: Sequence[Any], *, cap_chars: int, authored: Authored) -> List[Row]:
     out: List[Row] = []
     for msg in messages:
-        if isinstance(msg, dict):
-            out += rows_of(msg, cap_chars=cap_chars, clean_user=clean_user)
+        own = authored(msg) if isinstance(msg, dict) else None
+        if own is not None:
+            out += rows_of(own, cap_chars=cap_chars)
     return out

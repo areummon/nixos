@@ -104,6 +104,31 @@ class IngestTest(Fixture):
         self.assertEqual([r["text"] for r in self.main_rows()], ["a", "b", "c", "d"])
         self.assertEqual([r["source"] for r in self.main_rows()], ["cli:s1"] * 2 + ["cli:s2"] * 2)
 
+    def test_mid_turn_compression_logs_the_whole_turn_and_never_the_summary(self):
+        from agent.context_compressor import COMPRESSED_SUMMARY_METADATA_KEY, SUMMARY_PREFIX
+
+        def call(k, name):
+            return {"role": "assistant", "content": "", "tool_calls": [
+                {"id": k, "type": "function", "function": {"name": name, "arguments": "{}"}}]}
+
+        p = self.provider()
+        p.sync_turn("a", "b", session_id="s1", messages=turn("a", "b"))
+        live = turn("a", "b") + [
+            {"role": "user", "content": "migrate the db"},
+            call("c1", "migrate"), {"role": "tool", "tool_call_id": "c1", "content": "migrated 12 tables"},
+            call("c2", "check"), {"role": "tool", "tool_call_id": "c2", "content": "all green"},
+        ]
+        # Mid-turn, Hermes compresses: on_pre_compress sees the list first, then the session
+        # rotates and the turn goes on over the summary plus the protected tail.
+        self.assertEqual(p.on_pre_compress(live), "")
+        p.on_session_switch("s2", parent_session_id="s1", reset=False, reason="compression")
+        summary = {"role": "user", "content": SUMMARY_PREFIX + "\nThe user asked a; then to migrate the db.",
+                   COMPRESSED_SUMMARY_METADATA_KEY: True}
+        compressed = [summary, *live[-2:], {"role": "assistant", "content": "done"}]
+        p.sync_turn("migrate the db", "done", session_id="s2", messages=compressed)
+        self.assertEqual([r["text"] for r in self.main_rows()], [
+            "a", "b", "migrate the db", "migrate {}", "migrated 12 tables", "check {}", "all green", "done"])
+
     def test_reloaded_rows_and_an_interrupted_turn_are_resumed_not_skipped(self):
         p = self.provider()
         first = turn("plan the trip", "Lisbon in May.")
