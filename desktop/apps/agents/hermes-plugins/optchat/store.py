@@ -124,8 +124,22 @@ class Store:
         self._append("tree", n.to_json(), datetime.now().astimezone())
 
     def save_view(self, parts) -> None:
+        self._replace("view.json", [[p.l, p.i] for p in parts])
+
+    def load_viewed(self) -> List[str]:
+        """Ids of the sessions whose history carries the view (see Memory.observe)."""
+        try:
+            ids = json.loads((self.root / "viewed.json").read_text())
+        except (OSError, ValueError):
+            return []
+        return [i for i in ids if isinstance(i, str)] if isinstance(ids, list) else []
+
+    def save_viewed(self, ids) -> None:
+        self._replace("viewed.json", sorted(ids))
+
+    def _replace(self, name: str, obj) -> None:
         assert self.writable, "optchat store is read-only"
-        path = self.root / "view.json"
+        path = self.root / name
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps([[p.l, p.i] for p in parts]))
+        tmp.write_text(json.dumps(obj))
         os.replace(tmp, path)

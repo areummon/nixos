@@ -40,6 +40,22 @@ def text_of(content: Any) -> str:
     return ""
 
 
+def carries_view(messages: Sequence[Any]) -> bool:
+    """Whether a user row holds a <chat> view inside Hermes's <memory-context> fence: in the
+    api_content sidecar (the bytes a string turn sent) or in a multimodal turn's text parts."""
+    for msg in messages:
+        if not (isinstance(msg, dict) and msg.get("role") == "user"):
+            continue
+        for text in (msg.get("api_content"), text_of(msg.get("content"))):
+            start = text.find("<memory-context>") if isinstance(text, str) else -1
+            while start >= 0:
+                end = text.find("</memory-context>", start)
+                if "\n<chat>\n" in text[start:end if end >= 0 else None]:
+                    return True
+                start = text.find("<memory-context>", start + 1)
+    return False
+
+
 def rows_of(msg: Dict[str, Any], *, cap_chars: int) -> List[Row]:
     """The rows one authored message logs, each text stripped as the log stores it."""
     role = msg.get("role")

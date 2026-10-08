@@ -132,18 +132,22 @@ class OptChatProvider(MemoryProvider):
         return SYSTEM_PROMPT_BLOCK if self._mem else ""
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        if not self._mem or not self._mem.take_injection(session_id):
+        if not self._mem or not self._mem.offer_view(session_id):
             return ""
         self._mem.refresh()
         return self._mem.render()
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "",
                   messages: Optional[List[Dict[str, Any]]] = None, **kwargs) -> None:
-        if not (self._mem and self._writes):
+        if not self._mem:
             return
         if messages is None:
             messages = [{"role": "user", "content": user_content}, {"role": "assistant", "content": assistant_content}]
-        self._mem.ingest(session_id, messages, self._platform, _authored)
+        else:
+            messages = list(messages)
+            self._mem.observe(session_id, messages)
+        if self._writes:
+            self._mem.ingest(session_id, messages, self._platform, _authored)
 
     def on_pre_compress(self, messages: List[Dict[str, Any]]) -> str:
         """Compression can strike mid-turn, before sync_turn: log the rows about to be summarized."""
@@ -154,10 +158,14 @@ class OptChatProvider(MemoryProvider):
     def on_session_switch(self, new_session_id: str, *, parent_session_id: str = "", reset: bool = False,
                           rewound: bool = False, **kwargs) -> None:
         self._session_id = new_session_id
-        if self._mem:
-            self._mem.forget_session(new_session_id)
-            if not reset:
-                self._mem.link(new_session_id, parent_session_id)
+        if not self._mem:
+            return
+        if not reset:
+            self._mem.link(new_session_id, parent_session_id)
+        if kwargs.get("reason") == "compression":
+            self._mem.forget_view(new_session_id)
+        elif parent_session_id and not reset:
+            self._mem.inherit_view(new_session_id, parent_session_id)
 
     def on_delegation(self, task: str, result: str, *, child_session_id: str = "", **kwargs) -> None:
         if self._mem and self._writes and (result or "").strip():

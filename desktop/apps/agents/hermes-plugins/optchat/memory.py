@@ -17,7 +17,7 @@ from typing import Callable, Deque, Dict, List, Optional, Sequence, Set, Union
 
 from . import compaction
 from .compaction import Call, Job
-from .ingest import CHAT_KINDS, Authored, all_rows, resume_point
+from .ingest import CHAT_KINDS, Authored, all_rows, carries_view, resume_point
 from .model import Config, Kind, Message, Node, byte_len
 from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
 from .store import Store
@@ -54,8 +54,10 @@ class Memory:
         self._failed: List[Part] = []
         self._fails: Dict[Part, int] = {}
         self._running: Set[Part] = set()
-        # Per session id, across every provider instance in this process.
-        self._injected: Set[str] = set()
+        # Per session id, across every provider instance in this process: whether its history
+        # carries the view. "offered" from the prefetch that returned it until a sync shows the
+        # list; "landed" once one does, saved so a restart doesn't send a second copy.
+        self._views: Dict[str, str] = {}
         # A compressed or branched session's parent: its rows are this session's history too.
         self._parents: Dict[str, str] = {}
         # Ids of the messages each source logged from a session's list (CHAT_KINDS), in order.
@@ -69,6 +71,7 @@ class Memory:
         with self.lock:
             self.store.try_lock()
             self._load()
+            self._views = dict.fromkeys(self.store.load_viewed(), "landed")
             if self.writable:
                 self.store.save_view(self.view.parts)
                 self._seed()
@@ -183,18 +186,37 @@ class Memory:
         self.pump()
         return len(new)
 
-    def take_injection(self, session_id: str) -> bool:
-        """True the first time a session asks: its first prefetch carries the view, later ones don't,
-        since Hermes replays each turn's prefetch block on every later request."""
+    def offer_view(self, session_id: str) -> bool:
+        """Whether this session's prefetch should carry the view: Hermes replays each turn's
+        prefetch block on every later request, so once the history has it, never again."""
         with self.lock:
-            if session_id in self._injected:
+            if session_id in self._views:
                 return False
-            self._injected.add(session_id)
+            self._views[session_id] = "offered"
             return True
 
-    def forget_session(self, session_id: str) -> None:
+    def observe(self, session_id: str, messages: Sequence[dict]) -> None:
+        """Settle the view's state from the session's list. A view that never landed (Hermes
+        dropped a slow prefetch) is offered again at the next prefetch."""
+        self._set_view(session_id, "landed" if carries_view(messages) else None)
+
+    def forget_view(self, session_id: str) -> None:
+        """A compression may have summarized the view away: offer it until a sync shows it kept."""
+        self._set_view(session_id, None)
+
+    def inherit_view(self, session_id: str, parent_id: str) -> None:
+        """A branch starts with its parent's history, view and all."""
         with self.lock:
-            self._injected.discard(session_id)
+            state = self._views.get(parent_id)
+        self._set_view(session_id, state)
+
+    def _set_view(self, session_id: str, state: Optional[str]) -> None:
+        with self.lock:
+            was = self._views.pop(session_id, None)
+            if state:
+                self._views[session_id] = state
+            if (was == "landed") != (state == "landed") and self.writable and not self._closed:
+                self.store.save_viewed(s for s, v in self._views.items() if v == "landed")
 
     def _line(self, p: Part) -> str:
         n = self.nodes.get(p)

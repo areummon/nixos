@@ -247,6 +247,48 @@ class InjectionTest(Fixture):
         self.assertTrue(p.prefetch("q", session_id="s1"))
         self.assertEqual(p.prefetch("q", session_id="s1"), "")
 
+    def sent(self, user, view):
+        """A user row as Hermes keeps it after sending the view: the sent bytes in api_content."""
+        from agent.memory_manager import build_memory_context_block
+
+        return {"role": "user", "content": user, "api_content": user + "\n\n" + build_memory_context_block(view)}
+
+    def test_a_restart_does_not_inject_a_view_the_history_already_carries(self):
+        p = self.provider()
+        p.sync_turn("hello", "hi", session_id="s0", messages=turn("hello", "hi"))
+        view = p.prefetch("q", session_id="s1")
+        self.assertIn("<chat>", view)
+        p.sync_turn("q", "a", session_id="s1", messages=[self.sent("q", view), {"role": "assistant", "content": "a"}])
+        p.shutdown()
+        self.providers.remove(p)
+        p = self.provider(session="s1")
+        self.assertEqual(p.prefetch("resumed", session_id="s1"), "")
+
+    def test_a_view_that_never_landed_is_offered_again(self):
+        # Hermes drops a prefetch that outlasts its 8 s timeout.
+        p = self.provider()
+        p.sync_turn("hello", "hi", session_id="s0", messages=turn("hello", "hi"))
+        self.assertTrue(p.prefetch("q", session_id="s1"))
+        p.sync_turn("q", "a", session_id="s1", messages=turn("q", "a"))
+        self.assertTrue(p.prefetch("q2", session_id="s1"), "the view never reached the session")
+
+    def test_compression_and_branches_reinject_only_when_the_view_is_gone(self):
+        p = self.provider()
+        p.sync_turn("hello", "hi", session_id="s0", messages=turn("hello", "hi"))
+        view = p.prefetch("q", session_id="s1")
+        head = [self.sent("q", view), {"role": "assistant", "content": "a"}]
+        p.sync_turn("q", "a", session_id="s1", messages=head)
+        p.on_session_switch("b1", parent_session_id="s1", reset=False)
+        self.assertEqual(p.prefetch("q", session_id="b1"), "", "a branch copies the history, view and all")
+        # The first compression keeps the protected head, and the view in it.
+        p.on_session_switch("s2", parent_session_id="s1", reset=False, reason="compression")
+        p.sync_turn("go on", "ok", session_id="s2", messages=head + turn("go on", "ok"))
+        self.assertEqual(p.prefetch("next", session_id="s2"), "")
+        # A later one summarizes it away.
+        p.on_session_switch("s3", parent_session_id="s2", reset=False, reason="compression")
+        p.sync_turn("more", "ok", session_id="s3", messages=turn("more", "ok"))
+        self.assertTrue(p.prefetch("next", session_id="s3"))
+
     def test_two_instances_in_one_process_share_the_writer(self):
         a = self.provider(session="discord-1")
         b = self.provider(session="discord-2")
