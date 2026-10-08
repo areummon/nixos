@@ -356,6 +356,20 @@ class InjectionTest(Fixture):
         p.sync_turn("q", "a", session_id="s1", messages=turn("q", "a"))
         self.assertTrue(p.prefetch("q2", session_id="s1"), "the view never reached the session")
 
+    def test_a_turn_that_never_syncs_is_settled_by_the_next_sync(self):
+        # Hermes skips sync_turn for an interrupted or failed turn. Its user row may keep the view
+        # it was sent with, and a sync still queued looks the same, so the next prefetch waits.
+        p = self.provider()
+        p.sync_turn("hello", "hi", session_id="s0", messages=turn("hello", "hi"))
+        view = p.prefetch("q", session_id="s1")
+        self.assertEqual(p.prefetch("retry", session_id="s1"), "")
+        p.sync_turn("retry", "ok", session_id="s1", messages=[self.sent("q", view)] + turn("retry", "ok"))
+        self.assertEqual(p.prefetch("next", session_id="s1"), "", "the interrupted row kept the view")
+        self.assertTrue(p.prefetch("q", session_id="s2"))
+        self.assertEqual(p.prefetch("retry", session_id="s2"), "")
+        p.sync_turn("retry", "ok", session_id="s2", messages=turn("retry", "ok"))
+        self.assertTrue(p.prefetch("next", session_id="s2"), "the failed turn's row was dropped")
+
     def test_compression_and_branches_reinject_only_when_the_view_is_gone(self):
         p = self.provider()
         p.sync_turn("hello", "hi", session_id="s0", messages=turn("hello", "hi"))
