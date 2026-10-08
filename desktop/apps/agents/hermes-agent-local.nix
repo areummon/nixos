@@ -25,7 +25,7 @@ in {
       model.provider = "anthropic";
       # One chat that never ends (hermes-plugins/optchat), next to the built-in MEMORY.md / USER.md.
       memory.provider = "optchat";
-      memory.optchat.compactor_model = "claude-haiku-4-5-20251001";
+      memory.optchat.compactor_model = "claude-haiku-5-5";
       # The view (up to 128 KB) arrives as the memory prefetch. Above this cap Hermes swaps
       # a prefetch for a 1 KB preview (default 10,000 chars).
       hooks.output_spill.max_chars = 200000;

@@ -164,7 +164,7 @@ in {
     replaceContext = true;
     disableModelCompactor = false;
     # Cheap but competent compactor (spec §4.2/§10); the chat model stays your choice.
-    compactorModel = "anthropic/claude-haiku-4-5";
+    compactorModel = "anthropic/claude-haiku-5-5";
     compactorThinking = "medium";
   };
 
