@@ -30,5 +30,5 @@ Preconditions: `$V build` after the edit.
 
 ## Gotchas
 
-- `xdg.mimeApps.enable` is `false`, so the mime defaults never reach `~/.config/mimeapps.list`. The option evaluates, but nothing is written. Don't report a mime change as applied from the eval alone.
+- `xdg.mimeApps.enable` is `false`, so the mime defaults never reach `~/.config/mimeapps.list`. The option evaluates, but nothing is written. Don't report a mime change as applied from the eval alone. `~/.config/mimeapps.list` is hand-managed (gThumb for PNG/JPEG, Firefox for `text/html` via `xdg-mime default`); check it with `xdg-mime query default <type>`.
 - `$V diff-live .mozilla/firefox/...` fails with "No such file": the profile is under `.config/mozilla`. Only the browserpass host stays in `~/.mozilla`.
