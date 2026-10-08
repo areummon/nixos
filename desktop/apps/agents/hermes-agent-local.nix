@@ -17,7 +17,12 @@
       gateway.multiplex_profiles = false; # news/jobs profiles paused
       model.default = "claude-opus-5-5";
       model.provider = "anthropic";
-      memory.provider = ""; # built-in memory only (MEMORY.md / USER.md)
+      # One chat that never ends (hermes-plugins/optchat), next to the built-in MEMORY.md / USER.md.
+      memory.provider = "optchat";
+      memory.optchat.compactor_model = "claude-haiku-4-5-20251001";
+      # The view (up to 128 KB) arrives as the memory prefetch. Above this cap Hermes swaps
+      # a prefetch for a 1 KB preview (default 10,000 chars).
+      hooks.output_spill.max_chars = 200000;
       terminal.backend = "local";
       # Keyless Firecrawl tier unless FIRECRAWL_API_KEY is added to a secrets env file.
       web.extract_backend = "firecrawl";
@@ -46,6 +51,10 @@
       ];
     };
   };
+
+  # Not services.hermes-agent.extraPlugins: it links plugins as nix-managed-<name>, and a
+  # memory provider's directory name is its memory.provider name.
+  home.file."${config.services.hermes-agent.hermesHome}/plugins/optchat".source = ./hermes-plugins/optchat;
 
   systemd.user.services.hermes-agent.Service = {
     Environment = lib.mkForce [
