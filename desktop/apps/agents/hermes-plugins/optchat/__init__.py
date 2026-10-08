@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from agent.memory_provider import MemoryProvider, spawn_context_thread
 
 from .compaction import hermes_call
-from .memory import Memory, acquire, release
+from .memory import Memory, acquire, release, source_of
 from .model import Config
 from .prompt import SYSTEM_PROMPT_BLOCK
 
@@ -128,21 +128,21 @@ class OptChatProvider(MemoryProvider):
                   messages: Optional[List[Dict[str, Any]]] = None, **kwargs) -> None:
         if not (self._mem and self._writes):
             return
-        source = f"{self._platform}:{session_id}"
         if messages is None:
             messages = [{"role": "user", "content": user_content}, {"role": "assistant", "content": assistant_content}]
-            self._mem.forget_session(session_id)
-        self._mem.ingest(session_id, messages, source, _clean_user)
+        self._mem.ingest(session_id, messages, self._platform, _clean_user)
 
     def on_session_switch(self, new_session_id: str, *, parent_session_id: str = "", reset: bool = False,
                           rewound: bool = False, **kwargs) -> None:
         if self._mem:
             self._mem.forget_session(new_session_id)
+            if not reset:
+                self._mem.link(new_session_id, parent_session_id)
 
     def on_delegation(self, task: str, result: str, *, child_session_id: str = "", **kwargs) -> None:
         if self._mem and self._writes and (result or "").strip():
             name = child_session_id or "delegate"
-            self._mem.log("work", f"[{name}] task: {task}\n{result}", f"{self._platform}:{name}")
+            self._mem.log("work", f"[{name}] task: {task}\n{result}", source_of(self._platform, name))
 
     def on_memory_write(self, action: str, target: str, content: str,
                         metadata: Optional[Dict[str, Any]] = None) -> None:
@@ -153,7 +153,7 @@ class OptChatProvider(MemoryProvider):
         text = f"memory {action} ({target}): {content or ''}"
         if previous and previous != content:
             text += f"\nprevious: {previous}"
-        self._mem.log("note", text, f"{self._platform}:{meta.get('session_id', '')}")
+        self._mem.log("note", text, source_of(self._platform, meta.get("session_id", "")))
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
         return [ZOOM_SCHEMA, DATE_SCHEMA]

@@ -1,29 +1,16 @@
-"""Hermes's OpenAI-style message list -> OptChat rows. Pure: the caller owns the cursor."""
+"""Hermes's OpenAI-style message list -> OptChat rows. Pure: the caller supplies what it logged."""
 
 from __future__ import annotations
 
-import hashlib
 import json
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .model import Kind
 
 Row = Tuple[Kind, str]
 CleanUser = Callable[[str], Optional[str]]
-
-
-@dataclass(frozen=True)
-class Cursor:
-    """How much of one session's list is logged, and a fingerprint of the last logged row so a
-    list rewritten in place (compression, rewind) is not mistaken for the one already logged."""
-
-    count: int
-    last: str
-
-
-def fingerprint(msg: Any) -> str:
-    return hashlib.sha256(json.dumps(msg, sort_keys=True, default=str).encode()).hexdigest()
+# The kinds a session's message list turns into; ``note`` and ``work`` come from other hooks.
+CHAT_KINDS = frozenset({"user", "talk", "tool", "echo"})
 
 
 def cap(text: str, limit: int) -> str:
@@ -53,10 +40,11 @@ def _text(content: Any) -> str:
 
 
 def rows_of(msg: Dict[str, Any], *, cap_chars: int, clean_user: CleanUser) -> List[Row]:
+    """The rows one message logs, each text stripped as the log stores it."""
     role = msg.get("role")
     if role == "user":
-        text = clean_user(_text(msg.get("content")))
-        return [("user", text)] if text and text.strip() else []
+        text = (clean_user(_text(msg.get("content"))) or "").strip()
+        return [("user", text)] if text else []
     if role == "assistant":
         out: List[Row] = []
         text = _text(msg.get("content")).strip()
@@ -66,7 +54,7 @@ def rows_of(msg: Dict[str, Any], *, cap_chars: int, clean_user: CleanUser) -> Li
             fn = (call or {}).get("function") or {}
             args = fn.get("arguments")
             args = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
-            out.append(("tool", f"{fn.get('name') or '?'} {args or '{}'}"))
+            out.append(("tool", f"{fn.get('name') or '?'} {args or '{}'}".strip()))
         return out
     if role == "tool":
         text = _text(msg.get("content")).strip()
@@ -74,30 +62,53 @@ def rows_of(msg: Dict[str, Any], *, cap_chars: int, clean_user: CleanUser) -> Li
     return []
 
 
-def turn_start(messages: Sequence[Dict[str, Any]]) -> int:
-    """Index of the last user row: where a list this process has not seen begins its new turn."""
-    for k in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[k], dict) and messages[k].get("role") == "user":
-            return k
-    return 0
+def resume_point(rows: Sequence[Row], logged: Sequence[Row]) -> int:
+    """How many leading ``rows`` are already in ``logged``, the session's latest logged rows.
 
+    Hermes's list is not stable: a restart, a compression, a gateway reload from its DB or an
+    /undo hands over a list this process never saw, or one rewritten in place. So rather than
+    trust an index, align the list with the log, two ways:
 
-def new_rows(messages: Sequence[Dict[str, Any]], cursor: Optional[Cursor], *, cap_chars: int,
-             clean_user: CleanUser) -> Tuple[List[Row], Cursor]:
-    """Rows not logged yet, and the cursor after them.
+    - the longest run of rows that ends the log, so logging resumes where it stopped. The
+      earliest of equal runs wins, so a turn repeated word for word is logged again, not lost.
+    - the longest start of the list found anywhere in the log: after an /undo the last logged
+      rows are gone from the list, but the list still starts as the log did.
 
-    A list seen before resumes after its cursor, so the same list twice adds nothing. A list not
-    seen before (a new process, a resumed or compressed session, a rewritten one) holds history an
-    earlier sync already logged: only its last turn is new.
+    The alignment that matches more rows wins. With no match at all, every row is new.
     """
-    # Hermes passes its live list, which the next turn may grow while this reads it.
-    messages = list(messages)
-    known = (cursor is not None and cursor.count <= len(messages)
-             and (cursor.count == 0 or fingerprint(messages[cursor.count - 1]) == cursor.last))
-    start = cursor.count if known else turn_start(messages)
-    rows: List[Row] = []
-    for msg in messages[start:]:
+    if not logged:
+        return 0
+    n, m = len(rows), len(logged)
+    # z[m + 1 + n - e]: how many rows end both rows[:e] and logged.
+    z = _z([*reversed(logged), _SEP, *reversed(rows)])
+    run, end = 0, 0
+    for e in range(1, n + 1):
+        if z[m + 1 + n - e] > run:
+            run, end = z[m + 1 + n - e], e
+    start = max(_z([*rows, _SEP, *logged])[n + 1:], default=0)
+    return start if start > run else end
+
+
+_SEP = object()
+
+
+def _z(s: Sequence[Any]) -> List[int]:
+    """z[i]: the length of the longest common prefix of s and s[i:] (z[0] = 0)."""
+    z = [0] * len(s)
+    lo = hi = 0
+    for i in range(1, len(s)):
+        k = min(hi - i, z[i - lo]) if i < hi else 0
+        while i + k < len(s) and s[k] == s[i + k]:
+            k += 1
+        z[i] = k
+        if i + k > hi:
+            lo, hi = i, i + k
+    return z
+
+
+def all_rows(messages: Sequence[Any], *, cap_chars: int, clean_user: CleanUser) -> List[Row]:
+    out: List[Row] = []
+    for msg in messages:
         if isinstance(msg, dict):
-            rows += rows_of(msg, cap_chars=cap_chars, clean_user=clean_user)
-    end = len(messages)
-    return rows, Cursor(end, fingerprint(messages[end - 1]) if end else "")
+            out += rows_of(msg, cap_chars=cap_chars, clean_user=clean_user)
+    return out

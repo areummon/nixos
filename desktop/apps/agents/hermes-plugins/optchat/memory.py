@@ -17,7 +17,7 @@ from typing import Callable, Deque, Dict, List, Optional, Sequence, Set, Union
 
 from . import compaction
 from .compaction import Call, Job
-from .ingest import CleanUser, Cursor, new_rows
+from .ingest import CHAT_KINDS, CleanUser, all_rows, resume_point
 from .model import Config, Kind, Message, Node, byte_len
 from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
 from .store import Store
@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 Spawn = Callable[..., threading.Thread]
 PLACEHOLDER_BYTES = byte_len(PLACEHOLDER)
+
+
+def source_of(platform: str, session_id: str) -> str:
+    return f"{platform}:{session_id}"
 
 
 class Memory:
@@ -52,7 +56,10 @@ class Memory:
         self._running: Set[Part] = set()
         # Per session id, across every provider instance in this process.
         self._injected: Set[str] = set()
-        self._cursors: Dict[str, Cursor] = {}
+        # A compressed or branched session's parent: its rows are this session's history too.
+        self._parents: Dict[str, str] = {}
+        # Ids of the messages each source logged from a session's list (CHAT_KINDS), in order.
+        self._by_source: Dict[str, List[int]] = {}
 
     @property
     def writable(self) -> bool:
@@ -73,6 +80,9 @@ class Memory:
         if loaded.torn:
             logger.warning("optchat: skipped %d torn line(s) in %s", loaded.torn, self.store.root)
         self.messages, self.nodes = loaded.messages, loaded.nodes
+        self._by_source = {}
+        for m in self.messages:
+            self._index(m)
         self._stamp = self.store.stamp()
         # §3.2: a rebuilt view differs from the live one and kills every cache entry, so the saved
         # view is kept; only messages logged after its last save are appended.
@@ -128,6 +138,7 @@ class Memory:
         m = Message(i, kind, text, byte_len(f"{kind}: {text}"), datetime.now().astimezone().isoformat(), source)
         self.store.append_message(m)
         self.messages.append(m)
+        self._index(m)
         self.view, merged = self._grow(self.view, i, self.cfg.view_bytes)
         self.cview, _ = self._grow(self.cview, i, self.cfg.context_bytes, force=merged)
         self.store.save_view(self.view.parts)
@@ -138,19 +149,39 @@ class Memory:
             self._requeue(p)
         self._failed.clear()
 
-    def ingest(self, session_id: str, messages: Sequence[dict], source: str, clean_user: CleanUser) -> int:
-        """Log the rows of ``messages`` not logged yet for this session; returns how many."""
+    def _index(self, m: Message) -> None:
+        if m.source and m.kind in CHAT_KINDS:
+            self._by_source.setdefault(m.source, []).append(m.i)
+
+    def _logged(self, platform: str, session_id: str, limit: int) -> List[tuple]:
+        """The last ``limit`` rows logged from this session's list or its ancestors'."""
+        ids: List[int] = []
+        seen: Set[str] = set()
+        sid: Optional[str] = session_id
+        while sid and sid not in seen:
+            seen.add(sid)
+            ids += self._by_source.get(source_of(platform, sid), [])[-limit:]
+            sid = self._parents.get(sid)
+        return [(self.messages[i].kind, self.messages[i].text) for i in sorted(ids)[-limit:]]
+
+    def link(self, session_id: str, parent_id: str) -> None:
+        with self.lock:
+            if parent_id and parent_id != session_id:
+                self._parents[session_id] = parent_id
+
+    def ingest(self, session_id: str, messages: Sequence[dict], platform: str, clean_user: CleanUser) -> int:
+        """Log the rows of ``messages`` this session has not logged yet; returns how many."""
+        # Hermes passes its live list, which the next turn may grow while this reads it.
+        rows = all_rows(list(messages), cap_chars=self.cfg.cap_chars, clean_user=clean_user)
         with self.lock:
             if not self.writable or self._closed:
                 return 0
-            rows, cursor = new_rows(messages, self._cursors.get(session_id),
-                                    cap_chars=self.cfg.cap_chars, clean_user=clean_user)
-            for kind, text in rows:
-                if text.strip():
-                    self._append(kind, text.strip(), source)
-            self._cursors[session_id] = cursor
+            # The list overlaps at most len(rows) logged rows; the slack covers rows an /undo dropped.
+            new = rows[resume_point(rows, self._logged(platform, session_id, 2 * len(rows) + 256)):]
+            for kind, text in new:
+                self._append(kind, text, source_of(platform, session_id))
         self.pump()
-        return len(rows)
+        return len(new)
 
     def take_injection(self, session_id: str) -> bool:
         """True the first time a session asks: its first prefetch carries the view, later ones don't,
@@ -164,7 +195,6 @@ class Memory:
     def forget_session(self, session_id: str) -> None:
         with self.lock:
             self._injected.discard(session_id)
-            self._cursors.pop(session_id, None)
 
     def _line(self, p: Part) -> str:
         n = self.nodes.get(p)

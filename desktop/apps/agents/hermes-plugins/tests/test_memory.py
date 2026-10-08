@@ -96,13 +96,56 @@ class IngestTest(Fixture):
         p.sync_turn("c", "d", session_id="s1", messages=msgs)
         self.assertEqual([r["text"] for r in self.main_rows()], ["a", "b", "c", "d"])
 
-    def test_unseen_session_logs_only_its_last_turn(self):
-        # A resumed or compressed session hands over history an earlier sync already logged.
+    def test_compressed_child_session_resumes_after_its_parents_rows(self):
         p = self.provider()
-        history = turn("a", "b") + turn("c", "d")
-        p.on_session_switch("s2", parent_session_id="s1", reason="compression")
-        p.sync_turn("c", "d", session_id="s2", messages=history)
-        self.assertEqual([r["text"] for r in self.main_rows()], ["c", "d"])
+        p.sync_turn("a", "b", session_id="s1", messages=turn("a", "b"))
+        p.on_session_switch("s2", parent_session_id="s1", reset=False, reason="compression")
+        p.sync_turn("c", "d", session_id="s2", messages=turn("a", "b") + turn("c", "d"))
+        self.assertEqual([r["text"] for r in self.main_rows()], ["a", "b", "c", "d"])
+        self.assertEqual([r["source"] for r in self.main_rows()], ["cli:s1"] * 2 + ["cli:s2"] * 2)
+
+    def test_reloaded_rows_and_an_interrupted_turn_are_resumed_not_skipped(self):
+        p = self.provider()
+        first = turn("plan the trip", "Lisbon in May.")
+        p.sync_turn("plan the trip", "Lisbon in May.", session_id="s1", messages=first)
+        # Hermes never syncs an interrupted turn, and the gateway reloads history from its DB
+        # with bookkeeping keys the live rows lacked.
+        interrupted = turn("book flights", "", tool=("search", {"q": "LIS flights"}, "TAP 09:40"))[:-1]
+        reloaded = [{**m, "_db_persisted": True, "_row_id": k, "timestamp": 1.5}
+                    for k, m in enumerate(first + interrupted)]
+        p.sync_turn("window seat", "Done.", session_id="s1", messages=reloaded + turn("window seat", "Done."))
+        self.assertEqual([r["text"] for r in self.main_rows()], [
+            "plan the trip", "Lisbon in May.", "book flights", 'search {"q": "LIS flights"}', "TAP 09:40",
+            "window seat", "Done."])
+
+    def test_after_a_restart_an_unseen_list_resumes_after_the_logged_rows(self):
+        p = self.provider()
+        p.sync_turn("a", "b", session_id="s1", messages=turn("a", "b"))
+        p.shutdown()
+        self.providers.remove(p)
+        p = self.provider()
+        history = turn("a", "b") + turn("missed", "while down") + turn("c", "d")
+        p.sync_turn("c", "d", session_id="s1", messages=history)
+        p.sync_turn("c", "d", session_id="s1", messages=history)
+        self.assertEqual([r["text"] for r in self.main_rows()], ["a", "b", "missed", "while down", "c", "d"])
+
+    def test_a_repeated_turn_is_logged_again(self):
+        p = self.provider()
+        p.sync_turn("hi", "hello", session_id="s1", messages=turn("hi", "hello"))
+        p.shutdown()
+        self.providers.remove(p)
+        p = self.provider()
+        p.sync_turn("hi", "hello", session_id="s1", messages=turn("hi", "hello") + turn("hi", "hello"))
+        self.assertEqual([r["text"] for r in self.main_rows()], ["hi", "hello", "hi", "hello"])
+
+    def test_a_rewound_list_logs_only_the_new_turn(self):
+        p = self.provider()
+        msgs = turn("a", "ok") + turn("b", "ok")
+        p.sync_turn("b", "ok", session_id="s1", messages=msgs)
+        p.sync_turn("oops", "ok", session_id="s1", messages=msgs + turn("oops", "ok"))
+        p.on_session_switch("s1", parent_session_id="", reset=False, rewound=True)
+        p.sync_turn("c", "ok", session_id="s1", messages=msgs + turn("c", "ok"))
+        self.assertEqual([r["text"] for r in self.main_rows()], ["a", "ok", "b", "ok", "oops", "ok", "c", "ok"])
 
     def test_a_row_appended_during_a_sync_is_logged_by_the_next(self):
         # Hermes hands sync_turn its live list on a background worker while the next turn appends to it.
