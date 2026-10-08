@@ -24,8 +24,14 @@
       # a prefetch for a 1 KB preview (default 10,000 chars).
       hooks.output_spill.max_chars = 200000;
       terminal.backend = "local";
-      # Keyless Firecrawl tier unless FIRECRAWL_API_KEY is added to a secrets env file.
-      web.extract_backend = "firecrawl";
+      # Keyless Parallel (PARALLEL_API_KEY upgrades it to paid). Both keys stay explicit:
+      # unset, autodetect picks openai-native from the openai-codex login, which can't
+      # serve client-side search, and keyless Firecrawl answers 403. The activation
+      # merge never deletes keys, so naming both also overrides the stale firecrawl one.
+      web = {
+        search_backend = "parallel";
+        extract_backend = "parallel";
+      };
       discord = {
         require_mention = true;
         auto_thread = true;
