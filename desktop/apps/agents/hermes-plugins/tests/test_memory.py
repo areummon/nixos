@@ -285,6 +285,23 @@ class IngestTest(Fixture):
         self.assertEqual([(r["kind"], r["text"]) for r in self.main_rows()],
                          [("user", "deploy"), ("user", "which port?"), ("talk", "Use port 8080.")])
 
+    def test_an_interim_reply_hermes_reprompted_past_is_not_logged(self):
+        # A stall ("I'll check X" with no tool call) or a degenerate fragment is kept as an
+        # "incomplete" row, a nudge follows, and the model answers again.
+        from agent.conversation_loop import _CODEX_ACK_CONTINUATION_NUDGE, _DEGENERATE_FINAL_NUDGE
+
+        stall = {"role": "assistant", "content": "I'll check the logs next.", "finish_reason": "incomplete"}
+        fragment = {"role": "assistant", "content": "", "reasoning_content": "...", "api_content": "Ok",
+                    "finish_reason": "incomplete"}
+        msgs = [{"role": "user", "content": "why is it down?"},
+                stall, {"role": "user", "content": _CODEX_ACK_CONTINUATION_NUDGE},
+                fragment, {"role": "user", "content": _DEGENERATE_FINAL_NUDGE},
+                {"role": "assistant", "content": "The disk is full.", "finish_reason": "stop"}]
+        p = self.provider()
+        p.sync_turn("why is it down?", "The disk is full.", session_id="s1", messages=msgs)
+        self.assertEqual([(r["kind"], r["text"]) for r in self.main_rows()],
+                         [("user", "why is it down?"), ("talk", "The disk is full.")])
+
     def test_tool_results_are_clipped_head_and_tail(self):
         p = self.provider(cfg=Config(cap_chars=1000))
         out = "HEAD" + "x" * 5000 + "TAIL"

@@ -74,8 +74,12 @@ def _authored(msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     summary merged into it is cut off, the <memory-context> block Hermes appends to multimodal
     content goes (string content keeps it in the api_content sidecar instead), a /skill turn keeps
     the instruction, not the skill body, and the gateway's leading timestamp goes, as the log dates
-    each row itself and a reloaded row must read as it did live.
+    each row itself and a reloaded row must read as it did live. An "incomplete" assistant row is an
+    interim Hermes re-prompted past (a stall, a degenerate fragment, a thinking-only stop): the
+    answer comes after it, so only its tool calls are kept.
     """
+    if msg.get("role") == "assistant" and msg.get("finish_reason") == "incomplete":
+        return {"role": "assistant", "tool_calls": msg.get("tool_calls")}
     if msg.get("role") == "assistant" and not text_of(msg.get("content")).strip():
         # A reasoning-only stop keeps content empty and its text in the api_content sidecar;
         # a hidden row's sidecar is Hermes's placeholder, not the model's words.
