@@ -14,7 +14,7 @@ Owner: `nixos/configuration.nix`. Hardware and disks: `nixos/hardware-configurat
 - `virt`: podman (`dockerCompat`), VirtualBox host, distrobox.
 - `desktop-services`: gvfs, power-profiles-daemon, upower, gnome-keyring with PAM, fwupd, flatpak, fstrim, zram ahead of the disk swap device from `hardware-configuration.nix`.
 - `session`: the Hyprland NixOS module with the pinned package and portal, `withUWSM`, zsh as the login shell, and `linger = true` for moka, so user units like hermes run without a login.
-- `inputs`: nixpkgs 26.05, unstable, home-manager release-26.05, hyprland, opencode, hermes-agent.
+- `inputs`: nixpkgs 26.05, unstable, home-manager release-26.05, hyprland, llm-agents (numtide/llm-agents.nix, no `follows`, served by cache.numtide.com), hermes-agent.
 
 ## How to get to it (user POV)
 
