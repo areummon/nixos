@@ -40,6 +40,26 @@ test('private snapshot supplies original messages, summaries, dates and freezes 
   }
 });
 
+test('reduced mode redacts keys logged before redaction existed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'optmem-bridge-test-'));
+  const previous = process.env[SNAPSHOT_ENV];
+  // Built from pieces, so this file does not itself look like it holds a secret.
+  const key = 'sk-' + 'ant-api03-' + 'aB3dE5fG7hJ9kL1mN3pQ5rS7';
+  try {
+    const mem = fixture(dir);
+    mem.root[0].text = `my key is ${key}`;
+    mem.nodes.get('0:0').text = `user: key ${key}`;
+    mem.renderView = () => `<chat>0+2|key ${key}</chat>`;
+    const snapshot = readSnapshot(publishSnapshot(mem));
+    assert.equal(snapshot.zoom(0, 1), '0+0|user: my key is [redacted]');
+    assert.equal(snapshot.zoom(0, 2), '0+1|user: key [redacted]\n1+1|talk: Acknowledged');
+    assert.equal(snapshot.view, '<chat>0+2|key [redacted]</chat>');
+  } finally {
+    if (previous === undefined) delete process.env[SNAPSHOT_ENV]; else process.env[SNAPSHOT_ENV] = previous;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('child exposes only read-only memory tools and no archive logging hooks', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'optmem-bridge-test-'));
   const previous = process.env[SNAPSHOT_ENV];

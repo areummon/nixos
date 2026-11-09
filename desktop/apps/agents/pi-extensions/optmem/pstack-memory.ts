@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { OptMem } from "./memory.ts";
+import { redact } from "./redact.ts";
 
 export const SNAPSHOT_ENV = "PI_OPTMEM_PSTACK_SNAPSHOT";
 
@@ -37,13 +38,14 @@ export function readSnapshot(path: string) {
   }
   const nodes = new Map(data.nodes.map((n: any) => [`${n.l}:${n.i}`, n.text]));
   const flatten = (s: string) => s.replace(/\s+/g, " ").trim();
+  // Redacted on read, as in full mode: messages logged before redaction existed keep their keys.
   return {
-    view: data.view as string,
+    view: redact(data.view),
     zoom(id: number, n: number): string {
       if (!Number.isSafeInteger(id) || id < 0 || !Number.isSafeInteger(n) || n < 1 || !Number.isInteger(Math.log2(n)) || id % n || id + n > data.messages.length) return `No line ${id}+${n}.`;
-      if (n === 1) return `${id}+0|${data.messages[id].kind}: ${data.messages[id].text}`;
+      if (n === 1) return `${id}+0|${data.messages[id].kind}: ${redact(data.messages[id].text)}`;
       const l = Math.log2(n) - 1;
-      return [id, id + n / 2].map(start => `${start}+${n / 2}|${flatten(String(nodes.get(`${l}:${start / (n / 2)}`) ?? "(not summarized yet: zoom it)"))}`).join("\n");
+      return [id, id + n / 2].map(start => `${start}+${n / 2}|${flatten(redact(String(nodes.get(`${l}:${start / (n / 2)}`) ?? "(not summarized yet: zoom it)")))}`).join("\n");
     },
     date(id: number): string {
       const m = Number.isSafeInteger(id) && id >= 0 ? data.messages[id] : undefined;
