@@ -12,6 +12,12 @@
     # });
   };
 
+  # Agent CLIs from numtide/llm-agents.nix, as pkgs.llm-agents.<name>. Its own
+  # packages (not overlays.shared-nixpkgs), so they match cache.numtide.com.
+  llm-agents = final: _prev: {
+    llm-agents = inputs.llm-agents.packages.${final.stdenv.hostPlatform.system};
+  };
+
   # When applied, the unstable nixpkgs set (declared in the flake inputs) will
   # be accessible through 'pkgs.unstable'
   unstable-packages = final: _prev: {

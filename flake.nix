@@ -9,8 +9,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     hyprland.url = "github:hyprwm/Hyprland";
-    opencode.url = "github:anomalyco/opencode";
-    hermes-agent.url = "github:NousResearch/hermes-agent";
+    # Agent CLIs, tested against its own pinned nixpkgs-unstable; no follows so cache.numtide.com hits.
+    llm-agents.url = "github:numtide/llm-agents.nix";
+    # Pinned: upstream main (2026-11-06 npm->pnpm switch) has a stale hermes-tui
+    # pnpmDeps hash. Drop the /rev to follow main again once that is fixed.
+    hermes-agent.url = "github:NousResearch/hermes-agent/aa74e184ea779994af642ab4f888e10a95415d90";
   };
 
   outputs = {

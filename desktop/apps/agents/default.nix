@@ -5,7 +5,9 @@
   ...
 }: {
   imports = [
-    ./codex.nix
+    ./claude.nix
+    # Unused for now; re-add to reinstall Codex and its opencode-delegation profile.
+    # ./codex.nix
     ./opencode.nix
     ./pi.nix
     ./hermes-agent-local.nix

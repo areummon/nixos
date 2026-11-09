@@ -22,7 +22,7 @@
   };
 
   home.packages = with pkgs.unstable; [
-    anki
+    pkgs.anki
     obsidian
     brightnessctl
     bluez-tools
@@ -54,7 +54,6 @@
     playerctl
     libnotify
     proton-vpn
-    claude-code
   ];
 
   home.sessionVariables = {
@@ -96,6 +95,13 @@
         email = "areumm@proton.me";
       };
     };
+  };
+
+  # GitHub CLI; also registers gh as git's credential helper for github.com
+  programs.gh = {
+    enable = true;
+    package = pkgs.unstable.gh;
+    gitCredentialHelper.enable = true;
   };
 
   # nix-direnv configuration for programming environments
