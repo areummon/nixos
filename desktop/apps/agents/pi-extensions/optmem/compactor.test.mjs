@@ -117,3 +117,48 @@ test("rebuild refuses a bad line, a running compaction and a paused memory", asy
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a rebuild cut short drops the stale lines above it and finishes after a reload", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "optmem-rebuild-"));
+  const gen = { n: 1 };
+  let { mem, ctx } = await builtTree(dir, gen);
+  try {
+    const before = texts(mem);
+    mem.shutdown();
+    // What a process that rebuilt 2+2 leaves when it stops before appending 2:0 and 3:0.
+    const crashed = new Map(["0:2", "0:3", "1:1"].map(k => [k, `gen2 crashed ${k}`.padEnd(300, ".")]));
+    for (const [k, text] of crashed) {
+      const [l, i] = k.split(":").map(Number);
+      mem.appendLine("tree", { l, i, text, size: text.length });
+    }
+    mem = new OptMem(cfg(dir, 1000));
+    mem.load();
+    assert.deepEqual([...before.keys()].filter(k => !mem.nodes.has(k)), ["2:0", "3:0"]);
+    gen.n = 2;
+    await mem.start(ctx);
+    await settle(mem);
+    const after = texts(mem);
+    assert.deepEqual([...after.keys()].sort(), [...before.keys()].sort());
+    for (const [k, text] of after) {
+      if (crashed.has(k)) assert.equal(text, crashed.get(k), k);
+      else if (k === "2:0" || k === "3:0") assert.match(text, /^gen2 /, k);
+      else assert.equal(text, before.get(k), k);
+    }
+  } finally {
+    mem.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a memory never rebuilt loads every line", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "optmem-rebuild-"));
+  const { mem } = await builtTree(dir, { n: 1 });
+  try {
+    mem.shutdown();
+    const reloaded = new OptMem(cfg(dir, 1000));
+    reloaded.load();
+    assert.deepEqual(texts(reloaded), texts(mem));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

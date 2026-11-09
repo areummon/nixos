@@ -84,13 +84,15 @@ class Store:
         # Ids are permanent and dense; stop at the first gap rather than renumber.
         while len(out.messages) in by_id:
             out.messages.append(by_id[len(out.messages)])
-        for obj in self._read("tree", out):
+        saved: Dict[Part, Tuple[int, Node]] = {}
+        for at, obj in enumerate(self._read("tree", out)):
             n = Node.from_json(obj)
             if n is None:
                 out.torn += 1
             else:
                 # A rebuilt line is appended after the old one, which it replaces.
-                out.nodes[Part(n.l, n.i)] = n
+                saved[Part(n.l, n.i)] = (at, n)
+        out.nodes = fresh(saved)
         try:
             out.view_pairs = json.loads((self.root / "view.json").read_text())
         except (OSError, ValueError):
@@ -181,6 +183,21 @@ class Store:
             os.fsync(f.fileno())
         os.replace(tmp, path)
         _fsync_dir(self.root)
+
+
+def fresh(saved: Dict[Part, Tuple[int, Node]]) -> Dict[Part, Node]:
+    """The nodes, each given with its place in the tree log, less every node saved before a node
+    under it. A parent is always saved after its children, so a later one under it means a rebuild
+    stopped short of it; dropped, the stale node is built again from the new lines."""
+    newest: Dict[Part, int] = {}
+    stale = set()
+    for p in sorted(saved, key=lambda p: p.l):
+        at = saved[p][0]
+        under = max((newest[c] for c in p.children() if c in newest), default=-1) if p.l else -1
+        if under > at:
+            stale.add(p)
+        newest[p] = max(under, at)
+    return {p: n for p, (_, n) in saved.items() if p not in stale}
 
 
 def _time(t, now: float) -> float:

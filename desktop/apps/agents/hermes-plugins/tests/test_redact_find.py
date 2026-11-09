@@ -135,6 +135,8 @@ class FindToolTest(Fixture):
         self.assertEqual(self.find(p, query="gondolin", kinds=[]), self.find(p, query="gondolin"))
         bad = json.loads(p.handle_tool_call("optmem_find", {"query": "gondolin", "kinds": ["chat"]}))
         self.assertIn("unknown kinds: chat", bad["error"])
+        bad = json.loads(p.handle_tool_call("optmem_find", {"query": "gondolin", "kinds": [["user"], 3]}))
+        self.assertIn("unknown kinds: ['user'], 3", bad["error"])
 
     def test_find_is_a_listed_tool(self):
         p = self.provider()

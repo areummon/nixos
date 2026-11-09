@@ -728,6 +728,44 @@ class RebuildTest(Fixture):
         self.assertIn("read-only", self.rebuild(sub, 0, 1))
         self.assertIn("optmem_rebuild", [s["name"] for s in p.get_tool_schemas()])
 
+    def test_a_rebuild_cut_short_drops_the_stale_lines_above_it_and_finishes_after_a_reload(self):
+        from optmem.model import Node
+        from optmem.store import Store
+
+        p = self.built_tree()
+        before = {q: n.text for q, n in p._mem.nodes.items()}
+        p.shutdown()
+        self.providers.remove(p)
+        # What a process that rebuilt 2+2 leaves when it stops before appending 2:0 and 3:0.
+        store = Store(self.home / "optmem")
+        self.assertTrue(store.try_lock())
+        crashed = {q: f"gen2 crashed {q.l}:{q.i}".ljust(300, ".") for q in (Part(0, 2), Part(0, 3), Part(1, 1))}
+        for q, text in crashed.items():
+            store.append_node(Node(q.l, q.i, text, len(text)))
+        store.unlock()
+        self.assertEqual(set(before) - set(Store(self.home / "optmem").load().nodes), {Part(2, 0), Part(3, 0)})
+        self.gen = 2
+        reloaded = self.provider(call=self.call)
+        self.settle(reloaded)
+        after = {q: n.text for q, n in reloaded._mem.nodes.items()}
+        self.assertEqual(after.keys(), before.keys())
+        for q in before:
+            if q in crashed:
+                self.assertEqual(after[q], crashed[q])
+            elif q in (Part(2, 0), Part(3, 0)):
+                self.assertTrue(after[q].startswith("gen2 "), q)
+            else:
+                self.assertEqual(after[q], before[q], q)
+
+    def test_a_store_never_rebuilt_loads_every_line(self):
+        from optmem.store import Store
+
+        p = self.built_tree()
+        before = {q: n.text for q, n in p._mem.nodes.items()}
+        p.shutdown()
+        self.providers.remove(p)
+        self.assertEqual({q: n.text for q, n in Store(self.home / "optmem").load().nodes.items()}, before)
+
 
 class ViewCacheTest(Fixture):
     def message(self, rng, i):

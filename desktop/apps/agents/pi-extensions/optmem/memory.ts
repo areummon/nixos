@@ -25,6 +25,21 @@ export function mostDue(view: Part[], T: number, built: (l: number, i: number) =
   return best;
 }
 
+// The saved nodes, each with its place in the tree log, less every node saved
+// before a node under it. A parent is always saved after its children, so a
+// later one under it means a rebuild stopped short of it; dropped, the stale
+// node is built again from the new lines.
+export function fresh(saved: Map<string, { at: number; node: NodeRecord }>): Map<string, NodeRecord> {
+  const newest = new Map<string, number>();
+  const stale = new Set<string>();
+  for (const [k, { at, node }] of [...saved].sort(([, a], [, b]) => a.node.l - b.node.l)) {
+    const under = node.l ? Math.max(...[0, 1].map(d => newest.get(`${node.l - 1}:${node.i * 2 + d}`) ?? -1)) : -1;
+    if (under > at) stale.add(k);
+    newest.set(k, Math.max(under, at));
+  }
+  return new Map([...saved].filter(([k]) => !stale.has(k)).map(([k, { node }]) => [k, node]));
+}
+
 // memory_find's output: a message line is cut to FIND_LINE_BYTES (zoom gives it whole).
 const FIND_LINE_BYTES = 400;
 const FIND_BYTES = 12_000;
@@ -147,9 +162,13 @@ export class OptMem {
       if (typeof o.i === "number" && typeof o.text === "string" && typeof o.kind === "string") this.root[o.i] = o;
     });
     this.root = this.root.filter(Boolean).sort((a, b) => a.i - b.i);
+    // A rebuilt line is appended after the old one, which it replaces.
+    const saved = new Map<string, { at: number; node: NodeRecord }>();
+    let at = 0;
     loadDir("tree", (o) => {
-      if (typeof o.l === "number" && typeof o.i === "number" && typeof o.text === "string") this.nodes.set(this.key(o.l, o.i), o);
+      if (typeof o.l === "number" && typeof o.i === "number" && typeof o.text === "string") saved.set(this.key(o.l, o.i), { at: at++, node: o });
     });
+    for (const [k, n] of fresh(saved)) this.nodes.set(k, n);
     // A crash mid-write leaves a line that is not JSON: report it, skip it (§2).
     if (torn) this.ctx?.ui.notify(`optmem: skipped ${torn} torn line(s) in ${this.cfg.memoryDir}`, "warning");
   }

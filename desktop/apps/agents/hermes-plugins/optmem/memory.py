@@ -467,7 +467,7 @@ def _kinds(kinds: Optional[Sequence[str]]) -> FrozenSet[str]:
         return frozenset()
     if not isinstance(kinds, (list, tuple)):
         raise ValueError(f"kinds must be a list of: {', '.join(sorted(KINDS))}")
-    bad = [k for k in kinds if k not in KINDS]
+    bad = [k for k in kinds if not isinstance(k, str) or k not in KINDS]
     if bad:
         raise ValueError(f"unknown kinds: {', '.join(map(str, bad))}; use {', '.join(sorted(KINDS))}")
     return frozenset(kinds)
