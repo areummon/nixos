@@ -294,10 +294,12 @@ export class OptMem {
     return `<${tag}>\n${lines.join("\n")}\n</${tag}>`;
   }
 
+  isLine(id: number, n: number) {
+    return Number.isInteger(id) && Number.isInteger(n) && id >= 0 && n >= 1 && (n & (n - 1)) === 0 && id % n === 0 && id + n <= this.root.length;
+  }
+
   zoom(id: number, n: number): string {
-    if (!Number.isInteger(id) || !Number.isInteger(n) || n < 1 || (n & (n - 1)) !== 0 || id % n !== 0 || id + n > this.root.length) {
-      return `No line ${id}+${n}.`;
-    }
+    if (!this.isLine(id, n)) return `No line ${id}+${n}.`;
     if (n === 1) {
       const m = this.root[id];
       // Redacted on read too: messages logged before redaction existed keep their keys.
@@ -419,8 +421,39 @@ export class OptMem {
     return `rebuild scheduled for ${this.root.length} messages`;
   }
 
-  firstUnbuiltStart(): number {
-    for (const p of this.view) if (!this.built(p.l, p.i)) return startOf(p);
+  // Rebuild line id+n: drop its node, every node under it and every node
+  // above it; pump() builds them again from the messages up. The rebuilt
+  // nodes are appended to the tree log and win over the old ones on load.
+  rebuild(id: number, n: number): string {
+    if (!this.isLine(id, n)) return `No line ${id}+${n}.`;
+    if (!this.lock || this.stopped) return "optmem does not hold this memory's lock: nothing rebuilt.";
+    if (this.paused) return "optmem is paused: nothing rebuilt; resume it first.";
+    // A job in flight would add its old line back after the drop.
+    if (this.busy.size) return "optmem is still compacting: nothing rebuilt; retry shortly.";
+    let dropped = 0;
+    // Lines are dyadic ranges, so any that overlap id+n are inside it or contain it.
+    for (const [k, node] of this.nodes) {
+      if (startOf(node) < id + n && id < startOf(node) + countOf(node)) {
+        this.nodes.delete(k);
+        this.failedOnce.delete(k);
+        dropped++;
+      }
+    }
+    this.pump();
+    return `Rebuilding ${id}+${n}: ${dropped} lines dropped, their messages queued for the compactor.`;
+  }
+
+  // Where the built lines from message 0 end. A rebuild can leave an unbuilt
+  // view part over built ones, so the walk goes down into it.
+  builtUpTo(): number {
+    const reach = (p: Part): number => {
+      if (this.built(p.l, p.i)) return startOf(p) + countOf(p);
+      if (p.l === 0) return startOf(p);
+      const left = { l: p.l - 1, i: p.i * 2 };
+      const end = reach(left);
+      return end < startOf(left) + countOf(left) ? end : reach({ l: p.l - 1, i: p.i * 2 + 1 });
+    };
+    for (const p of this.view) if (!this.built(p.l, p.i)) return reach(p);
     return this.root.length;
   }
 
@@ -432,7 +465,7 @@ export class OptMem {
   pump() {
     if (this.stopped || this.paused) return;
     const T = this.root.length;
-    const first = this.firstUnbuiltStart();
+    const first = this.builtUpTo();
     for (let l = 0; pow2(l) <= T; l++) {
       for (let i = 0; (i + 1) * pow2(l) <= T; i++) {
         if (this.busy.size >= this.cfg.jobs) return;

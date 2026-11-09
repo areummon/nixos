@@ -322,6 +322,30 @@ class Memory:
         body = redact(" ".join(self.messages[p.i].body.split()))
         return f"{p.name}|{compaction.cut_bytes(body, FIND_LINE_BYTES)}"
 
+    def rebuild(self, id_: int, n: int) -> str:
+        """Rebuild line id+n: drop its node, every node under it and every node above it, and
+        queue its messages again; merges then rebuild back up as usual."""
+        with self.lock:
+            p = part_named(id_, n)
+            if p is None or p.end > len(self.messages):
+                return f"No line {id_}+{n}."
+            if not self.writable or self._closed:
+                return "optmem is read-only here (another process holds the lock): nothing rebuilt."
+            # A job in flight would add its old line back after the drop.
+            if not self.settled():
+                return "optmem is still compacting: nothing rebuilt; retry shortly."
+            # Lines are dyadic ranges, so any that overlap p are inside it or contain it.
+            dropped = [q for q in self.nodes if q.start < p.end and p.start < q.end]
+            for q in dropped:
+                del self.nodes[q]
+                self._fails.pop(q, None)
+            self._failed = [q for q in self._failed if q not in dropped]
+            for i in range(p.start, p.end):
+                bisect.insort(self._unbuilt_leaves, i)
+                heapq.heappush(self._ready_leaves, i)
+        self.pump()
+        return f"Rebuilding {p.name}: {len(dropped)} lines dropped, their messages queued for the compactor."
+
     def date(self, id_: int) -> str:
         with self.lock:
             if not 0 <= id_ < len(self.messages):

@@ -89,7 +89,8 @@ class Store:
             if n is None:
                 out.torn += 1
             else:
-                out.nodes.setdefault(Part(n.l, n.i), n)
+                # A rebuilt line is appended after the old one, which it replaces.
+                out.nodes[Part(n.l, n.i)] = n
         try:
             out.view_pairs = json.loads((self.root / "view.json").read_text())
         except (OSError, ValueError):

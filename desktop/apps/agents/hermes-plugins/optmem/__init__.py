@@ -75,6 +75,24 @@ FIND_SCHEMA = {
 }
 
 
+REBUILD_SCHEMA = {
+    "name": "optmem_rebuild",
+    "description": (
+        "Rebuild line id+n of the <chat> memory view from its messages, with every line under it "
+        "and above it. Use it when the user says a line is wrong, or a line contradicts the "
+        "messages it covers."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer", "description": "The line's first message id."},
+            "n": {"type": "integer", "description": "How many messages the line covers."},
+        },
+        "required": ["id", "n"],
+    },
+}
+
+
 def _load_config() -> Config:
     try:
         from hermes_cli.config import cfg_get, load_config_readonly
@@ -219,7 +237,7 @@ class OptMemProvider(MemoryProvider):
         self._mem.log("note", text, source_of(self._platform, meta.get("session_id", "")))
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        return [ZOOM_SCHEMA, DATE_SCHEMA, FIND_SCHEMA]
+        return [ZOOM_SCHEMA, DATE_SCHEMA, FIND_SCHEMA, REBUILD_SCHEMA]
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
         from tools.registry import tool_error
@@ -235,6 +253,11 @@ class OptMemProvider(MemoryProvider):
             if tool_name == "optmem_find":
                 top = min(max(int(args.get("top") or 10), 1), 50)
                 return json.dumps({"result": self._mem.find(str(args["query"]), top, args.get("kinds"))}, ensure_ascii=False)
+            if tool_name == "optmem_rebuild":
+                id_, n = int(args["id"]), int(args["n"])
+                if not self._writes:
+                    return json.dumps({"result": "optmem is read-only in this session: nothing rebuilt."})
+                return json.dumps({"result": self._mem.rebuild(id_, n)})
         except (KeyError, TypeError, ValueError) as exc:
             return tool_error(f"bad arguments: {exc}")
         return tool_error(f"Unknown tool: {tool_name}")

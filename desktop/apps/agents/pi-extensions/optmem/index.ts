@@ -279,12 +279,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_control",
     label: "Memory Control",
-    description: "Control OptMem memory: pause, resume, rebuild-tree, export, import-notes, or html (write a browsable page). global-export, global-import-notes and global-html act on the global memory.",
+    description: "Control OptMem memory: pause, resume, rebuild (line id+n, when the user says it is wrong or it contradicts its messages), rebuild-tree, export, import-notes, or html (write a browsable page). global-export, global-import-notes and global-html act on the global memory.",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["pause", "resume", "rebuild-tree", "export", "import-notes", "html", "global-export", "global-import-notes", "global-html"] },
+        action: { type: "string", enum: ["pause", "resume", "rebuild", "rebuild-tree", "export", "import-notes", "html", "global-export", "global-import-notes", "global-html"] },
         path: { type: "string" },
+        id: { type: "number", description: "rebuild: the line's first message id." },
+        n: { type: "number", description: "rebuild: how many messages the line covers." },
       },
       required: ["action"],
     } as any,
@@ -297,7 +299,8 @@ export default function (pi: ExtensionAPI) {
         mem.paused = false;
         mem.pump();
         text = "resumed";
-      } else if (params.action === "rebuild-tree") text = mem.rebuildTree();
+      } else if (params.action === "rebuild") text = mem.rebuild(Number(params.id), Number(params.n));
+      else if (params.action === "rebuild-tree") text = mem.rebuildTree();
       else if (params.action === "export") text = mem.exportSnapshot(params.path || join(mem.cfg.memoryDir, `export-${Date.now()}.json`));
       else if (params.action === "import-notes") text = await importNotes(params.path);
       else if (params.action === "html") text = writeHtml(mem, params.path || join(mem.cfg.memoryDir, "memory.html"));
@@ -310,7 +313,7 @@ export default function (pi: ExtensionAPI) {
   } as any);
 
   pi.registerCommand("memory", {
-    description: "OptMem memory: status | verify | zoom <id> <n> | date <id> | find <words> | pause | resume | rebuild-tree | export [path] | import-notes <path> | html [path]",
+    description: "OptMem memory: status | verify | zoom <id> <n> | date <id> | find <words> | pause | resume | rebuild <id> <n> | rebuild-tree | export [path] | import-notes <path> | html [path]",
     handler: async (args: string, ctx: ExtensionContext) => {
       const [cmd, a, b, ...more] = String(args ?? "").trim().split(/\s+/);
       try {
@@ -326,11 +329,12 @@ export default function (pi: ExtensionAPI) {
           mem.paused = false;
           mem.pump();
           ctx.ui.notify("optmem resumed", "info");
-        } else if (cmd === "rebuild-tree") ctx.ui.notify(mem.rebuildTree(), "info");
+        } else if (cmd === "rebuild") ctx.ui.notify(mem.rebuild(Number(a), Number(b)), "info");
+        else if (cmd === "rebuild-tree") ctx.ui.notify(mem.rebuildTree(), "info");
         else if (cmd === "export") ctx.ui.notify(mem.exportSnapshot(a || join(mem.cfg.memoryDir, `export-${Date.now()}.json`)), "info");
         else if (cmd === "import-notes") ctx.ui.notify(await importNotes(a), "info");
         else if (cmd === "html") ctx.ui.notify(writeHtml(mem, a || join(mem.cfg.memoryDir, "memory.html")), "info");
-        else ctx.ui.notify("Usage: /memory status | verify | zoom <id> <n> | date <id> | find <words> | pause | resume | rebuild-tree | export [path] | import-notes <path> | html [path]", "warning");
+        else ctx.ui.notify("Usage: /memory status | verify | zoom <id> <n> | date <id> | find <words> | pause | resume | rebuild <id> <n> | rebuild-tree | export [path] | import-notes <path> | html [path]", "warning");
       } catch (err) {
         ctx.ui.notify(`optmem error: ${err instanceof Error ? err.message : String(err)}`, "error");
       }
