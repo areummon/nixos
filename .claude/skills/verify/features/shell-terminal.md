@@ -6,7 +6,7 @@ Owners: `desktop/shell/zsh.nix`, `desktop/shell/starship.nix`, `desktop/apps/kit
 
 ## Sub-features
 
-- `zsh-aliases`: `update` (`sudo nixos-rebuild switch`), `sd` (fzf cd), plus the function `opencode` (`codex-opencode` is commented out while Codex is unused).
+- `zsh-aliases`: `update` (`sudo nixos-rebuild switch`), `sd` (fzf cd).
 - `zsh-keys`: vi mode, history prefix search on Up/Down, `^E` end-of-line.
 - `zsh-login`: `profileExtra` runs `exec systemd-cat -t uwsm_start uwsm start default` on TTY login when `uwsm check may-start && uwsm select` succeeds.
 - `zsh-integrations`: eza replaces `ls` (plus `ll`, `la`, `lla`, `lt`), zoxide adds `z`/`zi`, and fzf adds Ctrl-R, Ctrl-T, and Alt-C. History is in `~/.local/share/zsh/history`.

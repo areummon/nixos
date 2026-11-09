@@ -52,8 +52,8 @@ in {
     enable = true;
     package = pkgs.llm-agents.opencode;
     settings = {
-      model = "openrouter/deepseek/deepseek-v4.1-flash";
-      small_model = "openrouter/deepseek/deepseek-v4-flash-0731";
+      model = "opencode/deepseek-v4.1-flash-free";
+      small_model = "opencode/deepseek-v4.1-flash-free";
     };
   };
 
