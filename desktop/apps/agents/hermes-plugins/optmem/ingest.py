@@ -1,4 +1,4 @@
-"""Hermes's OpenAI-style message list -> OptChat rows. Pure: the caller supplies what it logged."""
+"""Hermes's OpenAI-style message list -> OptMem rows. Pure: the caller supplies what it logged."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .model import Kind
+from .redact import redact
 
 Row = Tuple[Kind, str]
 # The message as its author wrote it, or None for rows Hermes made up (compaction summaries, nudges).
@@ -18,7 +19,7 @@ def cap(text: str, limit: int) -> str:
     """Head and tail of a tool result, ``limit`` characters in all (spec §1)."""
     if len(text) <= limit:
         return text
-    marker = "\n\n[... optchat cut {} chars ...]\n\n"
+    marker = "\n\n[... optmem cut {} chars ...]\n\n"
     half = (limit - len(marker) - 8) // 2
     return text[:half] + marker.format(len(text) - 2 * half) + text[-half:]
 
@@ -76,18 +77,19 @@ def carries_view(messages: Sequence[Any]) -> bool:
 def rows_of(msg: Dict[str, Any], *, cap_chars: int) -> List[Row]:
     """The rows one authored message logs, each text stripped as the log stores it."""
     role = msg.get("role")
+    # Redacted before paging or capping, so no cut splits a key into two pieces that pass.
     if role == "user":
-        return [("user", p) for p in pages(text_of(msg.get("content")), cap_chars)]
+        return [("user", p) for p in pages(redact(text_of(msg.get("content"))), cap_chars)]
     if role == "assistant":
-        out: List[Row] = [("talk", p) for p in pages(text_of(msg.get("content")), cap_chars)]
+        out: List[Row] = [("talk", p) for p in pages(redact(text_of(msg.get("content"))), cap_chars)]
         for call in msg.get("tool_calls") or []:
             fn = (call or {}).get("function") or {}
             args = fn.get("arguments")
             args = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
-            out += [("tool", p) for p in pages(f"{fn.get('name') or '?'} {args or '{}'}", cap_chars)]
+            out += [("tool", p) for p in pages(redact(f"{fn.get('name') or '?'} {args or '{}'}"), cap_chars)]
         return out
     if role == "tool":
-        text = text_of(msg.get("content")).strip()
+        text = redact(text_of(msg.get("content"))).strip()
         return [("echo", cap(text, cap_chars))] if text else []
     return []
 

@@ -1,4 +1,4 @@
-"""The records OptChat logs (spec §1-2). Sizes are UTF-8 bytes, never tokens."""
+"""The records OptMem logs (spec §1-2). Sizes are UTF-8 bytes, never tokens."""
 
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ class Config:
 
     @staticmethod
     def from_mapping(raw: object) -> "Config":
-        """Overrides from config.yaml ``memory.optchat``; unknown keys and bad values keep the default."""
+        """Overrides from config.yaml ``memory.optmem``; unknown keys and bad values keep the default."""
         base = Config()
         if not isinstance(raw, dict):
             return base

@@ -1,0 +1,3 @@
+name: optmem
+version: 0.1.0
+description: "OptMem: one chat that never ends. Logs every message, compresses the log into a binary tree of one-line summaries, and opens each session with a view of the whole chat."

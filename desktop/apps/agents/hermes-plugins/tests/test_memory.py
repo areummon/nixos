@@ -10,12 +10,12 @@ import time
 import unittest
 from pathlib import Path
 
-from optchat import OptChatProvider
-from optchat.compaction import Job, run
-from optchat.model import Config
-from optchat.tree import Part
+from optmem import OptMemProvider
+from optmem.compaction import Job, run
+from optmem.model import Config
+from optmem.tree import Part
 
-logging.getLogger("optchat").setLevel(logging.ERROR)
+logging.getLogger("optmem").setLevel(logging.ERROR)
 
 
 class StubLLM:
@@ -48,7 +48,7 @@ def turn(user, reply, tool=None):
 
 class Fixture(unittest.TestCase):
     def setUp(self):
-        self.home = Path(tempfile.mkdtemp(prefix="optchat-test-"))
+        self.home = Path(tempfile.mkdtemp(prefix="optmem-test-"))
         self.providers = []
 
     def tearDown(self):
@@ -57,14 +57,14 @@ class Fixture(unittest.TestCase):
         shutil.rmtree(self.home, ignore_errors=True)
 
     def provider(self, session="s1", cfg=None, call=None, **kwargs):
-        p = OptChatProvider(config=cfg or Config(), call=call or StubLLM())
+        p = OptMemProvider(config=cfg or Config(), call=call or StubLLM())
         p.initialize(session, hermes_home=str(self.home), platform="cli", **kwargs)
         self.providers.append(p)
         return p
 
     def main_rows(self):
         rows = []
-        for f in sorted((self.home / "optchat" / "main").glob("*.jsonl")):
+        for f in sorted((self.home / "optmem" / "main").glob("*.jsonl")):
             rows += [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
         return rows
 
@@ -413,18 +413,18 @@ class InjectionTest(Fixture):
         p.on_session_switch("s2", parent_session_id="s1", reset=True, reason="new_session")
         p.on_session_switch("s1", parent_session_id="s2", reset=False, reason="resume")
         self.assertEqual(p.prefetch("next", session_id="s1"), "", "s1's history still carries its view")
-        parents = self.home / "optchat" / "parents.json"
+        parents = self.home / "optmem" / "parents.json"
         self.assertNotIn("s1", json.loads(parents.read_text()) if parents.exists() else {})
 
     def clock(self, now):
-        """Pins the time optchat.memory reads to now[0]."""
+        """Pins the time optmem.memory reads to now[0]."""
         from types import SimpleNamespace
         from unittest import mock
 
-        return mock.patch("optchat.memory.time", SimpleNamespace(time=lambda: now[0]), create=True)
+        return mock.patch("optmem.memory.time", SimpleNamespace(time=lambda: now[0]), create=True)
 
     def saved(self, name):
-        return json.loads((self.home / "optchat" / name).read_text())
+        return json.loads((self.home / "optmem" / name).read_text())
 
     def test_a_session_idle_past_the_limit_is_forgotten_and_a_live_one_kept(self):
         day, now = 86_400, [1_800_000_000.0]
@@ -466,7 +466,7 @@ class InjectionTest(Fixture):
 
     def test_files_from_before_the_times_were_kept_count_as_touched_at_load(self):
         day, now = 86_400, [1_800_000_000.0]
-        root = self.home / "optchat"
+        root = self.home / "optmem"
         root.mkdir()
         (root / "viewed.json").write_text(json.dumps(["s1"]))
         (root / "parents.json").write_text(json.dumps({"s2": "s1"}))
@@ -497,7 +497,7 @@ class InjectionTest(Fixture):
         holder = subprocess.Popen(
             [sys.executable, "-c",
              "import fcntl, os, sys, time\n"
-             f"fd = os.open({str(self.home / 'optchat' / 'lock')!r}, os.O_RDWR)\n"
+             f"fd = os.open({str(self.home / 'optmem' / 'lock')!r}, os.O_RDWR)\n"
              "try:\n    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
              "except BlockingIOError:\n    print('still held', flush=True)\n    sys.exit(1)\n"
              "print('locked', flush=True)\ntime.sleep(60)\n"],
@@ -510,7 +510,7 @@ class InjectionTest(Fixture):
             r.on_delegation("t", "report", child_session_id="kid")
             self.assertEqual(len(self.main_rows()), 2)
             self.assertIn("0+1|user: remember the milk", r.prefetch("q", session_id="cli"))
-            self.assertIn("talk: noted", json.loads(r.handle_tool_call("optchat_zoom", {"id": 1, "n": 1}))["result"])
+            self.assertIn("talk: noted", json.loads(r.handle_tool_call("optmem_zoom", {"id": 1, "n": 1}))["result"])
         finally:
             holder.kill()
             holder.wait()
@@ -524,9 +524,9 @@ class StoreTest(Fixture):
         import os
         from unittest import mock
 
-        from optchat.store import Store
+        from optmem.store import Store
 
-        store = Store(self.home / "optchat")
+        store = Store(self.home / "optmem")
         self.assertTrue(store.try_lock())
         events = []
         real_fsync, real_replace = os.fsync, os.replace
@@ -539,7 +539,7 @@ class StoreTest(Fixture):
             events.append(("replace", os.path.realpath(src)))
             real_replace(src, dst)
 
-        with mock.patch("optchat.store.os.fsync", fsync), mock.patch("optchat.store.os.replace", replace):
+        with mock.patch("optmem.store.os.fsync", fsync), mock.patch("optmem.store.os.replace", replace):
             store.save_parents({"s2": ("s1", 1_000_000)})
         store.unlock()
         root = os.path.realpath(store.root)
@@ -553,8 +553,8 @@ class StoreTest(Fixture):
         import os
         from unittest import mock
 
-        from optchat.model import Message, Node
-        from optchat.store import Store
+        from optmem.model import Message, Node
+        from optmem.store import Store
 
         events = []
         real_fsync = os.fsync
@@ -563,9 +563,9 @@ class StoreTest(Fixture):
             events.append(os.path.realpath(f"/proc/self/fd/{fd}"))
             real_fsync(fd)
 
-        store = Store(self.home / "optchat")
+        store = Store(self.home / "optmem")
         day1, day2 = "2026-10-01T09:00:00-06:00", "2026-10-02T09:00:00-06:00"
-        with mock.patch("optchat.store.os.fsync", fsync):
+        with mock.patch("optmem.store.os.fsync", fsync):
             self.assertTrue(store.try_lock())
             store.append_message(Message(0, "user", "a", 7, day1))
             store.append_message(Message(1, "talk", "b", 7, day1))
@@ -573,7 +573,7 @@ class StoreTest(Fixture):
             store.append_node(Node(0, 0, "a", 1))
             store.append_node(Node(0, 1, "b", 1))
             store.unlock()
-            self.assertTrue(Store(self.home / "optchat").try_lock())
+            self.assertTrue(Store(self.home / "optmem").try_lock())
         home, root = os.path.realpath(self.home), os.path.realpath(store.root)
         main, tree = os.path.join(root, "main"), os.path.join(root, "tree")
         tree_day = next(iter(os.listdir(tree)))
@@ -595,14 +595,14 @@ class ZoomTest(Fixture):
         p.sync_turn("q1", long_reply, session_id="s1", messages=turn("q1", long_reply))
         p.sync_turn("q2", "a2", session_id="s1", messages=turn("q1", long_reply) + turn("q2", "a2"))
         self.settle(p)
-        whole = json.loads(p.handle_tool_call("optchat_zoom", {"id": 1, "n": 1}))["result"]
+        whole = json.loads(p.handle_tool_call("optmem_zoom", {"id": 1, "n": 1}))["result"]
         self.assertEqual(whole, "1+1|talk: " + long_reply.strip())
-        pair = json.loads(p.handle_tool_call("optchat_zoom", {"id": 0, "n": 4}))["result"].split("\n")
+        pair = json.loads(p.handle_tool_call("optmem_zoom", {"id": 0, "n": 4}))["result"].split("\n")
         self.assertEqual([line.split("|")[0] for line in pair], ["0+2", "2+2"])
         self.assertEqual(pair[1], "2+2|user: q2 talk: a2")
-        bad = json.loads(p.handle_tool_call("optchat_zoom", {"id": 1, "n": 2}))["result"]
+        bad = json.loads(p.handle_tool_call("optmem_zoom", {"id": 1, "n": 2}))["result"]
         self.assertEqual(bad, "No line 1+2.")
-        self.assertRegex(json.loads(p.handle_tool_call("optchat_date", {"id": 0}))["result"], r"^\d{4}-\d\d-\d\dT")
+        self.assertRegex(json.loads(p.handle_tool_call("optmem_date", {"id": 0}))["result"], r"^\d{4}-\d\d-\d\dT")
 
 
 class CompactionTest(Fixture):
@@ -679,7 +679,7 @@ class ViewCacheTest(Fixture):
     def test_turns_reuse_nearly_all_of_the_previous_view_across_a_restart(self):
         rng = random.Random(7)
         cfg = Config(view_bytes=48_000, compactor="heuristic")
-        p = OptChatProvider(config=cfg)
+        p = OptMemProvider(config=cfg)
         p.initialize("s", hermes_home=str(self.home), platform="cli")
         prev, rewritten, total, msgs = "", 0, 0, []
         for t in range(600):
@@ -688,7 +688,7 @@ class ViewCacheTest(Fixture):
             self.settle(p)
             if t == 300:
                 p.shutdown()
-                p = OptChatProvider(config=cfg)
+                p = OptMemProvider(config=cfg)
                 p.initialize("s", hermes_home=str(self.home), platform="cli")
                 self.settle(p)
             view = p._mem.render().removesuffix("</chat>")
@@ -705,7 +705,7 @@ class ViewCacheTest(Fixture):
     def test_restart_keeps_the_view_byte_identical(self):
         rng = random.Random(3)
         cfg = Config(view_bytes=16_000, compactor="heuristic")
-        p = OptChatProvider(config=cfg)
+        p = OptMemProvider(config=cfg)
         p.initialize("s", hermes_home=str(self.home), platform="cli")
         msgs = []
         for t in range(150):
@@ -714,7 +714,7 @@ class ViewCacheTest(Fixture):
         self.settle(p)
         before = p._mem.render()
         p.shutdown()
-        p = OptChatProvider(config=cfg)
+        p = OptMemProvider(config=cfg)
         p.initialize("s", hermes_home=str(self.home), platform="cli")
         self.providers.append(p)
         self.settle(p)

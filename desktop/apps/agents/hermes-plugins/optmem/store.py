@@ -1,4 +1,4 @@
-"""The files under <hermes_home>/optchat/ (spec §1): append-only, flushed, day-split JSONL."""
+"""The files under <hermes_home>/optmem/ (spec §1): append-only, flushed, day-split JSONL."""
 
 from __future__ import annotations
 
@@ -117,7 +117,7 @@ class Store:
                     out.torn += 1
 
     def _append(self, sub: str, obj: dict, when: datetime) -> None:
-        assert self.writable, "optchat store is read-only"
+        assert self.writable, "optmem store is read-only"
         path = self.root / sub / f"{when:%Y-%m-%d}.jsonl"
         new = not path.exists()
         with open(path, "a", encoding="utf-8") as f:
@@ -171,7 +171,7 @@ class Store:
             return None
 
     def _replace(self, name: str, obj) -> None:
-        assert self.writable, "optchat store is read-only"
+        assert self.writable, "optmem store is read-only"
         path = self.root / name
         tmp = path.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as f:

@@ -21,6 +21,8 @@ from .compaction import Call, Job
 from .ingest import CHAT_KINDS, Authored, all_rows, carries_view, last_turn, pages, resume_point
 from .model import Config, Kind, Message, Node, byte_len
 from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
+from .redact import redact
+from .search import rank
 from .store import Stamped, Store
 from .tree import Part, View, contiguous_prefix, fit, grow, part_named, view_before
 
@@ -29,6 +31,9 @@ logger = logging.getLogger(__name__)
 Spawn = Callable[..., threading.Thread]
 PLACEHOLDER_BYTES = byte_len(PLACEHOLDER)
 DAY = 86_400
+# optmem_find's output: a message line is cut to FIND_LINE_BYTES (zoom gives it whole).
+FIND_LINE_BYTES = 400
+FIND_BYTES = 12_000
 
 
 def source_of(platform: str, session_id: str) -> str:
@@ -92,7 +97,7 @@ class Memory:
     def _load(self) -> None:
         loaded = self.store.load()
         if loaded.torn:
-            logger.warning("optchat: skipped %d torn line(s) in %s", loaded.torn, self.store.root)
+            logger.warning("optmem: skipped %d torn line(s) in %s", loaded.torn, self.store.root)
         self.messages, self.nodes = loaded.messages, loaded.nodes
         self._by_source = {}
         for m in self.messages:
@@ -137,7 +142,7 @@ class Memory:
         return grow(view, i, size=self._size, built=self._built, high=high, low=high // 2, force=force)
 
     def log(self, kind: Kind, text: str, source: Optional[str] = None) -> Optional[int]:
-        parts = pages(text or "", self.cfg.cap_chars)
+        parts = pages(redact(text or ""), self.cfg.cap_chars)
         if not parts:
             return None
         with self.lock:
@@ -286,8 +291,33 @@ class Memory:
                 return f"No line {id_}+{n}."
             if p.l == 0:
                 m = self.messages[id_]
-                return f"{p.name}|{m.body}"
+                # Redacted on read too: messages logged before redaction existed keep their keys.
+                return f"{p.name}|{redact(m.body)}"
             return "\n".join(self._line(c) for c in p.children())
+
+    def find(self, query: str, top: int = 10) -> str:
+        """The messages and summaries that best match ``query``'s words, newest first."""
+        with self.lock:
+            docs = [(m.i, m.text, Part(0, m.i)) for m in self.messages]
+            # Leaf summaries restate their message, which is already a document.
+            docs += [(p.end - 1, n.text, p) for p, n in self.nodes.items() if p.l > 0]
+            parts, matched = rank(docs, query, top)
+            lines = [self._find_line(p) for p in parts]
+        if not lines:
+            return "No matches."
+        out, size = [], 0
+        for line in lines:
+            size += byte_len(line) + 1
+            if out and size > FIND_BYTES:
+                break
+            out.append(line)
+        return "\n".join(out) + f"\n{len(out)} of {matched} matching lines; zoom one open for the whole."
+
+    def _find_line(self, p: Part) -> str:
+        if p.l > 0:
+            return redact(self._line(p))
+        body = redact(" ".join(self.messages[p.i].body.split()))
+        return f"{p.name}|{compaction.cut_bytes(body, FIND_LINE_BYTES)}"
 
     def date(self, id_: int) -> str:
         with self.lock:
@@ -374,7 +404,7 @@ class Memory:
                     self._add_node(p, plan)
                     continue
                 self._running.add(p)
-                self._spawn(self._work, args=(plan,), name=f"optchat-compact-{p.name}").start()
+                self._spawn(self._work, args=(plan,), name=f"optmem-compact-{p.name}").start()
 
     def _work(self, job: Job) -> None:
         p = job.part
@@ -387,7 +417,7 @@ class Memory:
                 if not gave_up:
                     self._running.discard(p)
                     self._failed.append(p)
-            logger.warning("optchat: compaction of %s failed (%s)%s", p.name, exc,
+            logger.warning("optmem: compaction of %s failed (%s)%s", p.name, exc,
                            "; using a heuristic line" if gave_up else "; retrying at the next message")
             if not gave_up:
                 return

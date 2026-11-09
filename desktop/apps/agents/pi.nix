@@ -4,8 +4,8 @@
   lib,
   ...
 }: let
-  projectsBaseDir = "${config.xdg.dataHome}/pi/optchat-memory/projects";
-  globalMemoryDir = "${config.xdg.dataHome}/pi/optchat-memory/global";
+  projectsBaseDir = "${config.xdg.dataHome}/pi/optmem/projects";
+  globalMemoryDir = "${config.xdg.dataHome}/pi/optmem/global";
   # Keep JSON key order: the permission extension uses the last matching rule.
   # bash runs in the gondolin VM, which sees only the cwd, so the rules gate
   # what can hurt the workspace or leave the machine, and the classifier judges
@@ -58,7 +58,7 @@
   '';
 in {
   # gondolin needs qemu_kvm; bwrap is kept for codex and opencode.
-  home.packages = with pkgs.unstable; [pi-coding-agent nodejs bubblewrap ripgrep qemu_kvm];
+  home.packages = [pkgs.llm-agents.pi] ++ (with pkgs.unstable; [nodejs bubblewrap ripgrep qemu_kvm]);
 
   # Fix the MCP SDK advisory without downgrading Pi plugins. The Bash parser
   # uses bundled WASM, so its native install script stays explicitly denied.
@@ -70,14 +70,14 @@ in {
       if [ -n "$piPolicyChanged" ] || ! node -e 'process.exit(require(process.argv[1]).version === "1.32.1" ? 0 : 1)' "$piNpmDir/node_modules/@modelcontextprotocol/sdk/package.json" 2>/dev/null; then
         npm install --prefix "$piNpmDir" --ignore-scripts --legacy-peer-deps --no-audit --no-fund
       fi
-      # pi-anthropic-oauth ignores Pi's onPayload hook, which drops OptChat's
+      # pi-anthropic-oauth ignores Pi's onPayload hook, which drops OptMem's
       # view cache breakpoints, so every turn rewrites the whole view.
       oauthDir="$piNpmDir/node_modules/pi-anthropic-oauth"
       if [ -f "$oauthDir/src/stream.ts" ] && ! grep -q "options?.onPayload" "$oauthDir/src/stream.ts"; then
         if ${pkgs.patch}/bin/patch --dry-run -s -d "$oauthDir" -p1 < ${./pi-anthropic-oauth-onpayload.patch} >/dev/null; then
           ${pkgs.patch}/bin/patch -s -d "$oauthDir" -p1 < ${./pi-anthropic-oauth-onpayload.patch}
         else
-          echo "pi: pi-anthropic-oauth onPayload patch no longer applies; OptChat view caching stays off" >&2
+          echo "pi: pi-anthropic-oauth onPayload patch no longer applies; OptMem view caching stays off" >&2
         fi
       fi
     fi
@@ -89,7 +89,7 @@ in {
     defaultModel = "claude-opus-5-5";
     defaultThinkingLevel = "medium";
     defaultTools = ["+codemode"];
-    # OptChat spec §8: no cache keep-alive pings; a long tool rewrites its entries.
+    # OptMem spec §8: no cache keep-alive pings; a long tool rewrites its entries.
     cacheWarming = "off";
     packages = [
       "npm:pi-web-access@0.35.0"
@@ -143,15 +143,15 @@ in {
     timeoutMs = 8000;
   };
 
-  # OptChat-style durable memory extension. Source is declarative; runtime data
+  # OptMem-style durable memory extension. Source is declarative; runtime data
   # stays mutable under XDG data, not in the Nix store.
-  home.file.".pi/agent/extensions/optchat-memory".source = ./pi-extensions/optchat-memory;
+  home.file.".pi/agent/extensions/optmem".source = ./pi-extensions/optmem;
   home.file.".pi/agent/extensions/gondolin".source = ./pi-extensions/gondolin;
   # Pi resolves an extension's bare imports from its symlink path, so this link
   # lets the gondolin extension find the package Pi's npm policy installs.
   home.file.".pi/agent/node_modules".source =
     config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.pi/agent/npm/node_modules";
-  home.file.".pi/agent/optchat-memory.json".text = builtins.toJSON {
+  home.file.".pi/agent/optmem.json".text = builtins.toJSON {
     # Each project's memory lives at <projectBaseDir>/<cwd under home, "/" as "--">.
     projectBaseDir = projectsBaseDir;
     inherit globalMemoryDir;
@@ -169,14 +169,14 @@ in {
   };
 
   home.sessionVariables = {
-    PI_OPTCHAT_NODE_BYTES = "512";
-    PI_OPTCHAT_VIEW_BYTES = "128000";
-    PI_OPTCHAT_JOBS = "8";
-    PI_OPTCHAT_CAP_CHARS = "30000";
-    # Full OptChat mode: system + durable memory view + latest user message.
-    PI_OPTCHAT_REPLACE_CONTEXT = "1";
+    PI_OPTMEM_NODE_BYTES = "512";
+    PI_OPTMEM_VIEW_BYTES = "128000";
+    PI_OPTMEM_JOBS = "8";
+    PI_OPTMEM_CAP_CHARS = "30000";
+    # Full OptMem mode: system + durable memory view + latest user message.
+    PI_OPTMEM_REPLACE_CONTEXT = "1";
   };
 
-  xdg.dataFile."pi/optchat-memory/projects/.keep".text = "";
-  xdg.dataFile."pi/optchat-memory/global/.keep".text = "";
+  xdg.dataFile."pi/optmem/projects/.keep".text = "";
+  xdg.dataFile."pi/optmem/global/.keep".text = "";
 }

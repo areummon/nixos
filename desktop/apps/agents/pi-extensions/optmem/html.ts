@@ -3,13 +3,13 @@
 // time span and size. Lines link down to the nodes they were made from.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { OptChatMemory } from "./memory.ts";
+import type { OptMem } from "./memory.ts";
 import type { Part } from "./types.ts";
 import { byteLen, countOf, idOf, pow2 } from "./util.ts";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-export function writeHtml(mem: OptChatMemory, path: string): string {
+export function writeHtml(mem: OptMem, path: string): string {
   const T = mem.root.length;
   const day = (i: number) => mem.root[i]?.date?.replace("T", " ").slice(0, 16) ?? "?";
   const span = (p: Part) => {
@@ -49,7 +49,7 @@ export function writeHtml(mem: OptChatMemory, path: string): string {
 
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OptChat memory</title>
+<title>OptMem memory</title>
 <style>
 :root { --bg: #fff; --fg: #1d1d1f; --muted: #6b6b70; --line: #e4e4e7; --accent: #2557d6; --code: #f5f5f7; }
 @media (prefers-color-scheme: dark) { :root { --bg: #151517; --fg: #e8e8ea; --muted: #9a9aa0; --line: #2c2c30; --accent: #7aa2ff; --code: #1e1e21; } }
@@ -62,7 +62,7 @@ pre { background: var(--code); margin: 4px 0 0; padding: 8px; white-space: pre-w
 summary { cursor: pointer; font-weight: 600; margin: 10px 0; }
 nav a { margin-right: 12px; }
 </style></head><body>
-<h1>OptChat memory</h1>
+<h1>OptMem memory</h1>
 <p class="meta">${T} messages · ${mem.nodes.size} tree nodes · view ${mem.viewBytes()} / ${mem.cfg.viewBytes} B in ${mem.view.length} lines · written ${esc(new Date().toISOString())}</p>
 <nav><a href="#view">View</a><a href="#tree">Tree</a><a href="#root">Messages</a></nav>
 <h2 id="view">View</h2>
