@@ -24,7 +24,7 @@ from gateway.message_timestamps import strip_leading_message_timestamps
 from .compaction import hermes_call
 from .ingest import text_of
 from .memory import Memory, acquire, release, source_of
-from .model import Config
+from .model import KINDS, Config
 from .prompt import SYSTEM_PROMPT_BLOCK
 
 logger = logging.getLogger(__name__)
@@ -60,13 +60,15 @@ FIND_SCHEMA = {
     "description": (
         "Search the whole <chat> memory by words: messages and summaries ranked by BM25, ignoring "
         "case and accents and matching other forms of a word. Returns id+n lines, newest first; "
-        "zoom one open for the whole."
+        "zoom one open for the whole. kinds limits it to messages of those kinds, no summaries."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "query": {"type": "string", "description": "The words to look for."},
             "top": {"type": "integer", "description": "How many lines, 1-50 (default 10)."},
+            "kinds": {"type": "array", "items": {"type": "string", "enum": sorted(KINDS)},
+                      "description": "Only messages of these kinds."},
         },
         "required": ["query"],
     },
@@ -232,7 +234,7 @@ class OptMemProvider(MemoryProvider):
                 return json.dumps({"result": self._mem.date(int(args["id"]))})
             if tool_name == "optmem_find":
                 top = min(max(int(args.get("top") or 10), 1), 50)
-                return json.dumps({"result": self._mem.find(str(args["query"]), top)}, ensure_ascii=False)
+                return json.dumps({"result": self._mem.find(str(args["query"]), top, args.get("kinds"))}, ensure_ascii=False)
         except (KeyError, TypeError, ValueError) as exc:
             return tool_error(f"bad arguments: {exc}")
         return tool_error(f"Unknown tool: {tool_name}")

@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { config } from "./config.ts";
-import { OptMem } from "./memory.ts";
+import { FIND_KINDS, OptMem } from "./memory.ts";
 import { markViewBreakpoints } from "./cache.ts";
 import { AGENT_GUIDE, MASTER_PROMPT, MEMORY_GUIDE, VIEW_DOC, viewBlocks } from "./prompt.ts";
 import { writeHtml } from "./html.ts";
@@ -18,6 +18,15 @@ export default function (pi: ExtensionAPI) {
     return;
   }
   const mem = new OptMem(config());
+  const findParameters = {
+    type: "object",
+    properties: {
+      query: { type: "string" },
+      top: { type: "number", description: "How many lines, 1-50 (default 10)." },
+      kinds: { type: "array", items: { type: "string", enum: FIND_KINDS }, description: "Only messages of these kinds." },
+    },
+    required: ["query"],
+  } as any;
 
   const memoryTools = [
     {
@@ -41,10 +50,10 @@ export default function (pi: ExtensionAPI) {
     {
       name: "memory_find",
       label: "Find in Memory",
-      description: "Search the whole <chat> memory by words: messages and summaries ranked by BM25, ignoring case and accents and matching other forms of a word. Returns id+n lines, newest first; zoom one open for the whole.",
-      parameters: { type: "object", properties: { query: { type: "string" }, top: { type: "number", description: "How many lines, 1-50 (default 10)." } }, required: ["query"] } as any,
+      description: "Search the whole <chat> memory by words: messages and summaries ranked by BM25, ignoring case and accents and matching other forms of a word. Returns id+n lines, newest first; zoom one open for the whole. kinds limits it to messages of those kinds, no summaries.",
+      parameters: findParameters,
       async execute(_toolCallId: string, params: any) {
-        return { content: [{ type: "text", text: mem.find(params.query, params.top) }], details: undefined };
+        return { content: [{ type: "text", text: mem.find(params.query, params.top, params.kinds) }], details: undefined };
       },
     },
   ];
@@ -219,9 +228,9 @@ export default function (pi: ExtensionAPI) {
       name: "global_find",
       label: "Find in Global Memory",
       description: "memory_find for the <global-memory> notes.",
-      parameters: { type: "object", properties: { query: { type: "string" }, top: { type: "number", description: "How many lines, 1-50 (default 10)." } }, required: ["query"] } as any,
+      parameters: findParameters,
       async execute(_toolCallId: string, params: any) {
-        return { content: [{ type: "text", text: needGlobal().find(params.query, params.top) }], details: undefined };
+        return { content: [{ type: "text", text: needGlobal().find(params.query, params.top, params.kinds) }], details: undefined };
       },
     },
   ];

@@ -121,6 +121,21 @@ class FindToolTest(Fixture):
         self.assertEqual(lines[0], "1+1|talk: needle [redacted]")
         self.assertLessEqual(len(lines[1].encode()), 400 + len("0+1|"))
 
+    def test_find_with_kinds_ranks_only_those_messages_and_no_summaries(self):
+        p = self.provider()
+        msgs = turn("gondolin should boot faster", "on it", tool=("terminal", {"cmd": "gondolin start"}, "gondolin booted in 40s"))
+        p.sync_turn("", "", session_id="s1", messages=msgs)
+        p.on_delegation("gondolin check", "gondolin report", child_session_id="kid")
+        self.settle(p)
+        self.assertRegex(self.find(p, query="gondolin"), r"(?m)^\d+\+[2-9]", "unfiltered find includes a summary")
+        self.assertEqual(self.find(p, query="gondolin", kinds=["user"]).split("\n")[:-1],
+                         ["0+1|user: gondolin should boot faster"])
+        lines = self.find(p, query="gondolin", kinds=["echo", "work"]).split("\n")[:-1]
+        self.assertEqual([line.split("|", 1)[1].split(":")[0] for line in lines], ["work", "echo"])
+        self.assertEqual(self.find(p, query="gondolin", kinds=[]), self.find(p, query="gondolin"))
+        bad = json.loads(p.handle_tool_call("optmem_find", {"query": "gondolin", "kinds": ["chat"]}))
+        self.assertIn("unknown kinds: chat", bad["error"])
+
     def test_find_is_a_listed_tool(self):
         p = self.provider()
         self.assertIn("optmem_find", [s["name"] for s in p.get_tool_schemas()])

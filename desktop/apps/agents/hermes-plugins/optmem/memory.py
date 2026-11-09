@@ -14,12 +14,12 @@ import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Deque, Dict, List, Optional, Sequence, Set, Union
+from typing import Callable, Deque, Dict, FrozenSet, List, Optional, Sequence, Set, Union
 
 from . import compaction
 from .compaction import Call, Job
 from .ingest import CHAT_KINDS, Authored, all_rows, carries_view, last_turn, pages, resume_point
-from .model import Config, Kind, Message, Node, byte_len
+from .model import KINDS, Config, Kind, Message, Node, byte_len
 from .prompt import PLACEHOLDER, leaf_task, merge_task, render_line
 from .redact import redact
 from .search import rank
@@ -295,12 +295,15 @@ class Memory:
                 return f"{p.name}|{redact(m.body)}"
             return "\n".join(self._line(c) for c in p.children())
 
-    def find(self, query: str, top: int = 10) -> str:
-        """The messages and summaries that best match ``query``'s words, newest first."""
+    def find(self, query: str, top: int = 10, kinds: Optional[Sequence[str]] = None) -> str:
+        """The messages and summaries that best match ``query``'s words, newest first. With
+        ``kinds``, only messages of those kinds: a summary mixes kinds."""
+        want = _kinds(kinds)
         with self.lock:
-            docs = [(m.i, m.text, Part(0, m.i)) for m in self.messages]
+            docs = [(m.i, m.text, Part(0, m.i)) for m in self.messages if not want or m.kind in want]
             # Leaf summaries restate their message, which is already a document.
-            docs += [(p.end - 1, n.text, p) for p, n in self.nodes.items() if p.l > 0]
+            if not want:
+                docs += [(p.end - 1, n.text, p) for p, n in self.nodes.items() if p.l > 0]
             parts, matched = rank(docs, query, top)
             lines = [self._find_line(p) for p in parts]
         if not lines:
@@ -432,6 +435,18 @@ class Memory:
         with self.lock:
             self._closed = True
             self.store.unlock()
+
+
+def _kinds(kinds: Optional[Sequence[str]]) -> FrozenSet[str]:
+    """No kinds, or an empty list, means every message and summary."""
+    if kinds is None:
+        return frozenset()
+    if not isinstance(kinds, (list, tuple)):
+        raise ValueError(f"kinds must be a list of: {', '.join(sorted(KINDS))}")
+    bad = [k for k in kinds if k not in KINDS]
+    if bad:
+        raise ValueError(f"unknown kinds: {', '.join(map(str, bad))}; use {', '.join(sorted(KINDS))}")
+    return frozenset(kinds)
 
 
 def _touch(entries: Dict[str, Stamped], key: str, now: float) -> bool:

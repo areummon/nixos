@@ -29,6 +29,21 @@ export function mostDue(view: Part[], T: number, built: (l: number, i: number) =
 const FIND_LINE_BYTES = 400;
 const FIND_BYTES = 12_000;
 
+export const FIND_KINDS = ["user", "talk", "tool", "echo", "work", "note"] as const;
+type FindKind = typeof FIND_KINDS[number];
+
+// The log holds a pstack report as a user message; find calls it work, as summaries do.
+const kindOf = (m: MessageRecord): FindKind => (m.kind === "user" && m.source === "pstack-agent" ? "work" : m.kind);
+
+// No kinds, or an empty list, means every message and summary.
+function parseKinds(kinds: unknown): Set<FindKind> | undefined {
+  if (kinds == null) return undefined;
+  if (!Array.isArray(kinds)) throw new Error(`kinds must be a list of: ${FIND_KINDS.join(", ")}`);
+  const bad = kinds.filter(k => !(FIND_KINDS as readonly unknown[]).includes(k));
+  if (bad.length) throw new Error(`unknown kinds: ${bad.join(", ")}; use ${FIND_KINDS.join(", ")}`);
+  return kinds.length ? new Set(kinds) : undefined;
+}
+
 export class OptMem {
   cfg: Config;
   root: MessageRecord[] = [];
@@ -297,10 +312,12 @@ export class OptMem {
   }
 
   // The messages and summaries that best match query's words, newest first.
-  // Leaf summaries restate their message, which is already a document.
-  find(query: string, top = 10): string {
-    const docs: Doc<Part>[] = this.root.map(m => [m.i, m.text, { l: 0, i: m.i }]);
-    for (const n of this.nodes.values()) if (n.l > 0) docs.push([startOf(n) + countOf(n) - 1, n.text, { l: n.l, i: n.i }]);
+  // Leaf summaries restate their message, which is already a document. With
+  // kinds, only messages of those kinds: a summary mixes kinds.
+  find(query: string, top = 10, kinds?: unknown): string {
+    const want = parseKinds(kinds);
+    const docs: Doc<Part>[] = this.root.filter(m => !want || want.has(kindOf(m))).map(m => [m.i, m.text, { l: 0, i: m.i }]);
+    if (!want) for (const n of this.nodes.values()) if (n.l > 0) docs.push([startOf(n) + countOf(n) - 1, n.text, { l: n.l, i: n.i }]);
     const [parts, matched] = rank(docs, String(query ?? ""), Math.min(Math.max(Math.trunc(Number(top) || 10), 1), 50));
     if (!parts.length) return "No matches.";
     const out: string[] = [];
