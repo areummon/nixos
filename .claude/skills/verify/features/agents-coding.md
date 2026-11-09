@@ -1,8 +1,8 @@
 # Coding agents and global rules
 
-Claude Code and Claude Desktop, OpenCode with a bubblewrap-sandboxed launcher (`opencode-sandboxed`), and the shared `~/AGENTS.md` rules file that agent sessions under `~` read (except inside `opencode-sandboxed`, which can't see it). Codex and its network-enabled delegation profile are dormant: `codex.nix` stays in the repo but isn't imported.
+Claude Code and Claude Desktop, OpenCode with a bubblewrap-sandboxed launcher (`opencode-sandboxed`), the Herdr app, and the shared `~/AGENTS.md` rules file that agent sessions under `~` read (except inside `opencode-sandboxed`, which can't see it). Codex and its network-enabled delegation profile are dormant: `codex.nix` stays in the repo but isn't imported.
 
-Owners: `desktop/apps/agents/claude.nix`, `opencode.nix`, `agents-md.nix`; dormant: `codex.nix` (re-add it in `agents/default.nix`). Claude Code, Claude Desktop, Codex and OpenCode come from `pkgs.llm-agents` (the `llm-agents` overlay in `overlays/default.nix`). Hermes stays on its own flake: its home-manager module needs `hermesVenv` and `.override` hooks that the llm-agents `hermes-agent` lacks.
+Owners: `desktop/apps/agents/claude.nix`, `opencode.nix`, `herdr.nix`, `agents-md.nix`; dormant: `codex.nix` (re-add it in `agents/default.nix`). Claude Code, Claude Desktop, Codex, OpenCode and Herdr come from `pkgs.llm-agents` (the `llm-agents` overlay in `overlays/default.nix`). Hermes stays on its own flake: its home-manager module needs `hermesVenv` and `.override` hooks that the llm-agents `hermes-agent` lacks.
 
 ## Sub-features
 
@@ -11,12 +11,14 @@ Owners: `desktop/apps/agents/claude.nix`, `opencode.nix`, `agents-md.nix`; dorma
 - `opencode-settings`: `~/.config/opencode/opencode.json` sets `model` and `small_model`.
 - `opencode-sandboxed`: the `opencode-sandboxed` wrapper. bwrap gives it a tmpfs home where only the three opencode dirs and `$PWD` are persistently writable (the tmpfs home, `/tmp`, and `/run` are writable but discarded), plus read-only `/nix/store`, `/etc`, and the system and user profiles. PID, UTS, IPC, and cgroup are unshared, capabilities are dropped, and the environment is cleared. `/tmp` and `/run` are empty tmpfs mounts, so setuid wrappers such as `sudo` aren't available inside. The network is **not** unshared.
 - `codex-delegation` (dormant): `~/.codex/opencode-delegation.config.toml` (workspace-write, `approval_policy = "on-request"`, network on, with Codex's `network_proxy` allowlisting only the openrouter domains), layered over the base config by `codex --profile opencode-delegation`.
+- `herdr`: `herdr.nix` puts `herdr-app` (the Herdr desktop app, `herdr-app.desktop`) and `herdr-core` in `home.packages`. The `herdr-app` wrapper already adds herdr-core to its own `PATH`; listing `herdr-core` too is what puts `hc` and `herdr-core` on the user's `PATH`.
 - `agents-md`: `~/AGENTS.md` lists secrets that are off limits, folders that need asking first, and general conduct rules.
 
 ## How to get to it (user POV)
 
 - Run `claude`, or open Claude from the launcher (`claude-desktop`).
 - Run `opencode` or `cd <project> && opencode-sandboxed`.
+- Open Herdr from the launcher, or run `herdr-app` or `hc`.
 - Any agent started under `~` picks up `~/AGENTS.md`, except `opencode-sandboxed`, whose tmpfs home hides it.
 
 ## Driving it with verify
@@ -25,6 +27,7 @@ Preconditions: `$V build` after the edit. Below, `B="$(cat $($V run)/toplevel.pa
 
 - **Claude packages.** Run `command ls $B/bin/ | grep -xE 'claude|claude-desktop'`, which lists both.
 - **Claude Desktop keyring.** Run `grep -c -- --password-store=gnome-libsecret $B/bin/claude-desktop` (gives `1`) and `grep ^Exec $B/share/applications/com.anthropic.Claude.desktop` (bare `claude-desktop`).
+- **Herdr packages.** Run `command ls $B/bin/ | grep -xE 'hc|herdr-app|herdr-core'`, which lists all three, and `grep ^Exec $B/share/applications/herdr-app.desktop` (`Exec=herdr-app`).
 - **OpenCode model.** Run `$V diff-live .config/opencode/opencode.json`. Only `model` or `small_model` changes.
 - **Sandbox wrapper.** Run `cat $B/bin/opencode-sandboxed`. The `bwrap` flags match the edit.
 - **Codex profile (when re-enabled).** Run `$V diff-live .codex/opencode-delegation.config.toml`. While dormant, `$V ls .codex` is empty.

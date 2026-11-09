@@ -13,7 +13,7 @@ home-manager/home.nix           user: packages, session vars, portals, git, dire
 desktop/default.nix             -> shell/, apps/, theme/theme.nix
 desktop/shell/                  zsh.nix (aliases, fzf, eza, zoxide), starship.nix
 desktop/apps/default.nix        list of every app module; add new apps here
-desktop/apps/agents/            AI agents: claude (code + desktop), pi, hermes (local/news/jobs), opencode, codex, AGENTS.md
+desktop/apps/agents/            AI agents: claude (code + desktop), pi, hermes (local/news/jobs), opencode, herdr, codex, AGENTS.md
 desktop/apps/hyprland/          hyprland.nix (Lua config: binds, rules), hypridle, hyprlock, hyprpaper, hyprsunset, session daemons
 desktop/apps/waybar/            bar + scripts/ (backlight, bluetooth, network, power, volume)
 desktop/apps/wofi/              launcher (SUPER+R) and clipboard picker
@@ -23,7 +23,7 @@ overlays/default.nix            pkgs.unstable and pkgs.llm-agents come from here
 pkgs/, modules/                 empty scaffolding (still wired as flake outputs and the additions overlay)
 ```
 
-Package-set conventions: most packages come from `pkgs.unstable.*`, and the agent CLIs (claude-code, claude-desktop, codex, opencode, pi) from `pkgs.llm-agents.*`, and system/home share one nixpkgs (`useGlobalPkgs`). Agents and the desktop are all home-manager modules, so their options live under `home-manager.users.moka.*` when you `$V eval`.
+Package-set conventions: most packages come from `pkgs.unstable.*`, and the agent CLIs (claude-code, claude-desktop, codex, opencode, pi, herdr-core, herdr-app) from `pkgs.llm-agents.*`, and system/home share one nixpkgs (`useGlobalPkgs`). Agents and the desktop are all home-manager modules, so their options live under `home-manager.users.moka.*` when you `$V eval`.
 
 ## Baseline preconditions
 
@@ -51,7 +51,7 @@ Each feature file has an H1, one paragraph, then exactly these H2s in order: `Su
 
 - [Pi coding agent](./agents-pi.md): Pi settings, permission policy, the gondolin VM sandbox and its host `nix` tool, the pstack sheet, and the optmem extension.
 - [Hermes agent](./agents-hermes.md): the Discord gateway service, the desktop app, the OptMem memory provider, the local browser, plus the paused `news` and `jobs` profiles.
-- [Coding agents and global rules](./agents-coding.md): Claude Code and Claude Desktop (keyring wrapper), OpenCode (and `opencode-sandboxed`), `~/AGENTS.md`, plus the dormant Codex profile.
+- [Coding agents and global rules](./agents-coding.md): Claude Code and Claude Desktop (keyring wrapper), OpenCode (and `opencode-sandboxed`), Herdr, `~/AGENTS.md`, plus the dormant Codex profile.
 - [Desktop apps](./desktop-apps.md): Firefox profile and browserpass, VS Code, mpv, LearnHarness.
 - [Hyprland desktop](./desktop-hyprland.md): keybinds, idle/lock, wallpaper, waybar, wofi, notifications, clipboard.
 - [Shell and terminal](./shell-terminal.md): zsh, starship, kitty, neovim.
