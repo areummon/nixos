@@ -93,3 +93,18 @@ test("find returns lines newest first, cut and redacted, with a count", async ()
     assert.equal(mem.find("gondolin", 1).split("\n").length, 2);
   });
 });
+
+test("find with kinds ranks only those messages and no summaries", async () => {
+  await withMem(async (mem) => {
+    await mem.log("user", "gondolin should boot faster");
+    await mem.log("tool", "bash gondolin start");
+    await mem.log("echo", "bash: gondolin booted in 40s");
+    await mem.log("user", "[a1] gondolin report", "pstack-agent");
+    while (!mem.settled()) await new Promise(r => setImmediate(r));
+    assert.ok(mem.find("gondolin").split("\n").some(l => /^\d+\+[2-9]/.test(l)), "unfiltered find includes a summary");
+    assert.deepEqual(mem.find("gondolin", 10, ["user"]).split("\n").slice(0, -1), ["0+1|user: gondolin should boot faster"]);
+    assert.deepEqual(mem.find("gondolin", 10, ["echo", "work"]).split("\n").slice(0, -1).map(l => l.split("|")[0]), ["3+1", "2+1"]);
+    assert.equal(mem.find("gondolin", 10, []), mem.find("gondolin"));
+    assert.throws(() => mem.find("gondolin", 10, ["chat"]), /unknown kinds: chat/);
+  });
+});

@@ -9,7 +9,7 @@ import { markViewBreakpoints } from "./cache.ts";
 import { redact } from "./redact.ts";
 import { rank, type Doc } from "./search.ts";
 import { COMPACT_PROMPT, viewBlocks } from "./prompt.ts";
-import { assertSafeImportPath, byteLen, countOf, cutBytes, exactScaleLine, flatten, heuristicSummary, idOf, localDay, pow2, safeJson, startOf, textContent } from "./util.ts";
+import { assertSafeImportPath, byteLen, countOf, cutBytes, flatten, heuristicSummary, idOf, localDay, pow2, safeJson, startOf, textContent } from "./util.ts";
 
 // §3.2: the sibling pair most due to merge, as the index of its left part, or
 // -1. due = (T - last) / 2^l, written (T + 1) / 2^l - i; ties go to the oldest.
@@ -25,9 +25,39 @@ export function mostDue(view: Part[], T: number, built: (l: number, i: number) =
   return best;
 }
 
+// The saved nodes, each with its place in the tree log, less every node saved
+// before a node under it. A parent is always saved after its children, so a
+// later one under it means a rebuild stopped short of it; dropped, the stale
+// node is built again from the new lines.
+export function fresh(saved: Map<string, { at: number; node: NodeRecord }>): Map<string, NodeRecord> {
+  const newest = new Map<string, number>();
+  const stale = new Set<string>();
+  for (const [k, { at, node }] of [...saved].sort(([, a], [, b]) => a.node.l - b.node.l)) {
+    const under = node.l ? Math.max(...[0, 1].map(d => newest.get(`${node.l - 1}:${node.i * 2 + d}`) ?? -1)) : -1;
+    if (under > at) stale.add(k);
+    newest.set(k, Math.max(under, at));
+  }
+  return new Map([...saved].filter(([k]) => !stale.has(k)).map(([k, { node }]) => [k, node]));
+}
+
 // memory_find's output: a message line is cut to FIND_LINE_BYTES (zoom gives it whole).
 const FIND_LINE_BYTES = 400;
 const FIND_BYTES = 12_000;
+
+export const FIND_KINDS = ["user", "talk", "tool", "echo", "work", "note"] as const;
+type FindKind = typeof FIND_KINDS[number];
+
+// The log holds a pstack report as a user message; find calls it work, as summaries do.
+const kindOf = (m: MessageRecord): FindKind => (m.kind === "user" && m.source === "pstack-agent" ? "work" : m.kind);
+
+// No kinds, or an empty list, means every message and summary.
+function parseKinds(kinds: unknown): Set<FindKind> | undefined {
+  if (kinds == null) return undefined;
+  if (!Array.isArray(kinds)) throw new Error(`kinds must be a list of: ${FIND_KINDS.join(", ")}`);
+  const bad = kinds.filter(k => !(FIND_KINDS as readonly unknown[]).includes(k));
+  if (bad.length) throw new Error(`unknown kinds: ${bad.join(", ")}; use ${FIND_KINDS.join(", ")}`);
+  return kinds.length ? new Set(kinds) : undefined;
+}
 
 export class OptMem {
   cfg: Config;
@@ -132,9 +162,13 @@ export class OptMem {
       if (typeof o.i === "number" && typeof o.text === "string" && typeof o.kind === "string") this.root[o.i] = o;
     });
     this.root = this.root.filter(Boolean).sort((a, b) => a.i - b.i);
+    // A rebuilt line is appended after the old one, which it replaces.
+    const saved = new Map<string, { at: number; node: NodeRecord }>();
+    let at = 0;
     loadDir("tree", (o) => {
-      if (typeof o.l === "number" && typeof o.i === "number" && typeof o.text === "string") this.nodes.set(this.key(o.l, o.i), o);
+      if (typeof o.l === "number" && typeof o.i === "number" && typeof o.text === "string") saved.set(this.key(o.l, o.i), { at: at++, node: o });
     });
+    for (const [k, n] of fresh(saved)) this.nodes.set(k, n);
     // A crash mid-write leaves a line that is not JSON: report it, skip it (§2).
     if (torn) this.ctx?.ui.notify(`optmem: skipped ${torn} torn line(s) in ${this.cfg.memoryDir}`, "warning");
   }
@@ -279,10 +313,12 @@ export class OptMem {
     return `<${tag}>\n${lines.join("\n")}\n</${tag}>`;
   }
 
+  isLine(id: number, n: number) {
+    return Number.isInteger(id) && Number.isInteger(n) && id >= 0 && n >= 1 && (n & (n - 1)) === 0 && id % n === 0 && id + n <= this.root.length;
+  }
+
   zoom(id: number, n: number): string {
-    if (!Number.isInteger(id) || !Number.isInteger(n) || n < 1 || (n & (n - 1)) !== 0 || id % n !== 0 || id + n > this.root.length) {
-      return `No line ${id}+${n}.`;
-    }
+    if (!this.isLine(id, n)) return `No line ${id}+${n}.`;
     if (n === 1) {
       const m = this.root[id];
       // Redacted on read too: messages logged before redaction existed keep their keys.
@@ -297,10 +333,12 @@ export class OptMem {
   }
 
   // The messages and summaries that best match query's words, newest first.
-  // Leaf summaries restate their message, which is already a document.
-  find(query: string, top = 10): string {
-    const docs: Doc<Part>[] = this.root.map(m => [m.i, m.text, { l: 0, i: m.i }]);
-    for (const n of this.nodes.values()) if (n.l > 0) docs.push([startOf(n) + countOf(n) - 1, n.text, { l: n.l, i: n.i }]);
+  // Leaf summaries restate their message, which is already a document. With
+  // kinds, only messages of those kinds: a summary mixes kinds.
+  find(query: string, top = 10, kinds?: unknown): string {
+    const want = parseKinds(kinds);
+    const docs: Doc<Part>[] = this.root.filter(m => !want || want.has(kindOf(m))).map(m => [m.i, m.text, { l: 0, i: m.i }]);
+    if (!want) for (const n of this.nodes.values()) if (n.l > 0) docs.push([startOf(n) + countOf(n) - 1, n.text, { l: n.l, i: n.i }]);
     const [parts, matched] = rank(docs, String(query ?? ""), Math.min(Math.max(Math.trunc(Number(top) || 10), 1), 50));
     if (!parts.length) return "No matches.";
     const out: string[] = [];
@@ -402,8 +440,39 @@ export class OptMem {
     return `rebuild scheduled for ${this.root.length} messages`;
   }
 
-  firstUnbuiltStart(): number {
-    for (const p of this.view) if (!this.built(p.l, p.i)) return startOf(p);
+  // Rebuild line id+n: drop its node, every node under it and every node
+  // above it; pump() builds them again from the messages up. The rebuilt
+  // nodes are appended to the tree log and win over the old ones on load.
+  rebuild(id: number, n: number): string {
+    if (!this.isLine(id, n)) return `No line ${id}+${n}.`;
+    if (!this.lock || this.stopped) return "optmem does not hold this memory's lock: nothing rebuilt.";
+    if (this.paused) return "optmem is paused: nothing rebuilt; resume it first.";
+    // A job in flight would add its old line back after the drop.
+    if (this.busy.size) return "optmem is still compacting: nothing rebuilt; retry shortly.";
+    let dropped = 0;
+    // Lines are dyadic ranges, so any that overlap id+n are inside it or contain it.
+    for (const [k, node] of this.nodes) {
+      if (startOf(node) < id + n && id < startOf(node) + countOf(node)) {
+        this.nodes.delete(k);
+        this.failedOnce.delete(k);
+        dropped++;
+      }
+    }
+    this.pump();
+    return `Rebuilding ${id}+${n}: ${dropped} lines dropped, their messages queued for the compactor.`;
+  }
+
+  // Where the built lines from message 0 end. A rebuild can leave an unbuilt
+  // view part over built ones, so the walk goes down into it.
+  builtUpTo(): number {
+    const reach = (p: Part): number => {
+      if (this.built(p.l, p.i)) return startOf(p) + countOf(p);
+      if (p.l === 0) return startOf(p);
+      const left = { l: p.l - 1, i: p.i * 2 };
+      const end = reach(left);
+      return end < startOf(left) + countOf(left) ? end : reach({ l: p.l - 1, i: p.i * 2 + 1 });
+    };
+    for (const p of this.view) if (!this.built(p.l, p.i)) return reach(p);
     return this.root.length;
   }
 
@@ -415,7 +484,7 @@ export class OptMem {
   pump() {
     if (this.stopped || this.paused) return;
     const T = this.root.length;
-    const first = this.firstUnbuiltStart();
+    const first = this.builtUpTo();
     for (let l = 0; pow2(l) <= T; l++) {
       for (let i = 0; (i + 1) * pow2(l) <= T; i++) {
         if (this.busy.size >= this.cfg.jobs) return;
@@ -477,9 +546,11 @@ export class OptMem {
     const model = this.compactorModel();
     if (!this.ctx || !model) throw new Error(`no compactor model (${this.cfg.compactorModel ?? "chat model unset"})`);
     const N = this.cfg.nodeBytes;
+    // A bare ruler, not a sample summary: the compactor copied a sample's facts into real lines.
+    const size = `of at most ${N} bytes (about ${Math.floor(N * 70 / 512)} words), the length of this ruler:\n${"-".repeat(N)}`;
     const step = l === 0
-      ? `For scale, this line is exactly ${N} bytes:\n${exactScaleLine(N)}\n\nCompress this message into one line, in at most ${N} bytes:\n${source}`
-      : `For scale, this line is exactly ${N} bytes:\n${exactScaleLine(N)}\n\nMerge these two lines into one, in at most ${N} bytes:\n${source}`;
+      ? `Compress this message into one line ${size}\n\n${source}`
+      : `Merge these two lines into one ${size}\n\n${source}`;
     // Two blocks: the context (first, so calls share a cached prefix), then the step.
     const context = viewBlocks(this.contextBefore(l, i));
     const messages: any[] = [

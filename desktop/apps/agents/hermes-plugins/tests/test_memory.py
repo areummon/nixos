@@ -511,6 +511,8 @@ class InjectionTest(Fixture):
             self.assertEqual(len(self.main_rows()), 2)
             self.assertIn("0+1|user: remember the milk", r.prefetch("q", session_id="cli"))
             self.assertIn("talk: noted", json.loads(r.handle_tool_call("optmem_zoom", {"id": 1, "n": 1}))["result"])
+            self.assertIn("read-only", json.loads(r.handle_tool_call("optmem_rebuild", {"id": 0, "n": 1}))["result"])
+            self.assertIn("another process holds the lock", r._mem.rebuild(0, 1))
         finally:
             holder.kill()
             holder.wait()
@@ -670,6 +672,99 @@ class CompactionTest(Fixture):
         self.settle(p)
         self.assertEqual(len(leaf_calls), 2)
         self.assertTrue(p._mem.nodes[Part(0, 0)].text.startswith("user: lorem ipsum"))
+
+
+class RebuildTest(Fixture):
+    def setUp(self):
+        super().setUp()
+        self.gen = 1
+
+    def call(self, messages):
+        """Each line names its generation and its task, long enough that every merge needs the model."""
+        task = messages[1]["content"][-1]["text"].split("\n", 1)[0]
+        return f"gen{self.gen} {task}".ljust(300, ".")
+
+    def rebuild(self, p, id_, n):
+        return json.loads(p.handle_tool_call("optmem_rebuild", {"id": id_, "n": n}))["result"]
+
+    def built_tree(self):
+        p = self.provider(call=self.call)
+        msgs = []
+        for k in range(4):
+            msgs += turn(f"question {k} " + "pad " * 200, f"answer {k} " + "pad " * 200)
+            p.sync_turn("", "", session_id="s1", messages=list(msgs))
+        self.settle(p)
+        self.assertIn(Part(3, 0), p._mem.nodes, "the tree grew to the top")
+        return p
+
+    def test_rebuild_replaces_the_line_its_subtree_and_ancestors_and_survives_a_reload(self):
+        p = self.built_tree()
+        before = {q: n.text for q, n in p._mem.nodes.items()}
+        self.gen = 2
+        self.assertTrue(self.rebuild(p, 2, 2).startswith("Rebuilding 2+2: 5 lines dropped"))
+        self.settle(p)
+        rebuilt = {Part(0, 2), Part(0, 3), Part(1, 1), Part(2, 0), Part(3, 0)}
+        after = {q: n.text for q, n in p._mem.nodes.items()}
+        self.assertEqual(after.keys(), before.keys())
+        for q in before:
+            self.assertTrue(after[q].startswith("gen2 " if q in rebuilt else "gen1 "), q)
+        self.assertEqual({q: after[q] for q in before if q not in rebuilt}, {q: before[q] for q in before if q not in rebuilt})
+        p.shutdown()
+        self.providers.remove(p)
+        reloaded = self.provider(call=self.call)
+        self.assertEqual({q: n.text for q, n in reloaded._mem.nodes.items()}, after)
+
+    def test_rebuild_refuses_a_bad_line_and_a_running_compaction(self):
+        p = self.built_tree()
+        self.assertEqual(self.rebuild(p, 1, 2), "No line 1+2.")
+        self.assertEqual(self.rebuild(p, 8, 1), "No line 8+1.")
+        with p._mem.lock:
+            p._mem._running.add(Part(0, 0))
+        self.assertIn("retry shortly", self.rebuild(p, 0, 1))
+        with p._mem.lock:
+            p._mem._running.clear()
+        self.assertIn(Part(0, 0), p._mem.nodes)
+        sub = self.provider(session="kid", call=self.call, agent_context="subagent")
+        self.assertIn("read-only", self.rebuild(sub, 0, 1))
+        self.assertIn("optmem_rebuild", [s["name"] for s in p.get_tool_schemas()])
+
+    def test_a_rebuild_cut_short_drops_the_stale_lines_above_it_and_finishes_after_a_reload(self):
+        from optmem.model import Node
+        from optmem.store import Store
+
+        p = self.built_tree()
+        before = {q: n.text for q, n in p._mem.nodes.items()}
+        p.shutdown()
+        self.providers.remove(p)
+        # What a process that rebuilt 2+2 leaves when it stops before appending 2:0 and 3:0.
+        store = Store(self.home / "optmem")
+        self.assertTrue(store.try_lock())
+        crashed = {q: f"gen2 crashed {q.l}:{q.i}".ljust(300, ".") for q in (Part(0, 2), Part(0, 3), Part(1, 1))}
+        for q, text in crashed.items():
+            store.append_node(Node(q.l, q.i, text, len(text)))
+        store.unlock()
+        self.assertEqual(set(before) - set(Store(self.home / "optmem").load().nodes), {Part(2, 0), Part(3, 0)})
+        self.gen = 2
+        reloaded = self.provider(call=self.call)
+        self.settle(reloaded)
+        after = {q: n.text for q, n in reloaded._mem.nodes.items()}
+        self.assertEqual(after.keys(), before.keys())
+        for q in before:
+            if q in crashed:
+                self.assertEqual(after[q], crashed[q])
+            elif q in (Part(2, 0), Part(3, 0)):
+                self.assertTrue(after[q].startswith("gen2 "), q)
+            else:
+                self.assertEqual(after[q], before[q], q)
+
+    def test_a_store_never_rebuilt_loads_every_line(self):
+        from optmem.store import Store
+
+        p = self.built_tree()
+        before = {q: n.text for q, n in p._mem.nodes.items()}
+        p.shutdown()
+        self.providers.remove(p)
+        self.assertEqual({q: n.text for q, n in Store(self.home / "optmem").load().nodes.items()}, before)
 
 
 class ViewCacheTest(Fixture):

@@ -40,6 +40,9 @@ Tools:
 - optmem_date(id) gives the date and time of message id
 - optmem_find(query) searches every message and summary by words and returns
   the best id+n lines, for what the view's summaries no longer name
+- optmem_rebuild(id, n) rebuilds line id+n, and the lines under and above it,
+  from its messages: use it when the user says a line is wrong, or a line
+  contradicts the messages it covers
 
 The view is your memory, and its latest word on a thing is the truth. Whenever
 you need any information from before this session, first find its latest
