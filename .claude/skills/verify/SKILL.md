@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Verify changes to moka's NixOS + home-manager flake (Hyprland desktop, zsh/kitty/neovim, Pi/Hermes/OpenCode/Codex agents, system services) by building the real system closure and inspecting the generated files and units, without switching. Use after editing any .nix file here, to prove a config change produces the intended file/unit, or to find which module owns a feature (see features/README.md).
+description: Verify changes to moka's NixOS + home-manager flake (Hyprland desktop, zsh/kitty/neovim, Claude/Pi/Hermes/OpenCode agents, system services) by building the real system closure and inspecting the generated files and units, without switching. Use after editing any .nix file here, to prove a config change produces the intended file/unit, or to find which module owns a feature (see features/README.md).
 ---
 
 # Verify the nixos-config flake
@@ -39,7 +39,7 @@ Run it first, and again whenever an eval or build fails strangely:
 $V doctor
 ```
 
-It checks the repo root, host name, nix version, the current system path, and untracked files, then evaluates the toplevel drvPath. `eval: ok` means the config evaluates. A `WARN untracked` list matters: **flakes only see git-tracked files.** A new file a module references fails with `path ... does not exist`, and a new file inside a directory the config sources, such as `pi-extensions/optchat-memory/`, is silently left out of the build. Fix it with `git add -N <file>`, which marks the file without staging its content.
+It checks the repo root, host name, nix version, the current system path, and untracked files, then evaluates the toplevel drvPath. `eval: ok` means the config evaluates. A `WARN untracked` list matters: **flakes only see git-tracked files.** A new file a module references fails with `path ... does not exist`, and a new file inside a directory the config sources, such as `pi-extensions/optmem/`, is silently left out of the build. Fix it with `git add -N <file>`, which marks the file without staging its content.
 
 ## Drive
 

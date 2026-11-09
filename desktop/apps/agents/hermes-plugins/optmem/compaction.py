@@ -81,7 +81,7 @@ def hermes_call(cfg: Config) -> Call:
         from agent.auxiliary_client import call_llm
 
         response = call_llm(
-            task="optchat_compaction", provider=cfg.compactor_provider, model=cfg.compactor_model,
+            task="optmem_compaction", provider=cfg.compactor_provider, model=cfg.compactor_model,
             messages=messages, max_tokens=cfg.compactor_max_tokens, timeout=cfg.compactor_timeout,
         )
         content = response.choices[0].message.content

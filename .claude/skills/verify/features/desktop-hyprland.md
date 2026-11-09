@@ -32,6 +32,7 @@ Preconditions: `$V build` after the edit.
 
 ## Gotchas
 
+- Hyprland 0.57's `--verify-config` occasionally segfaults (exit 139, "dumped core") on a valid config; it did once in 8 runs. Rerun `hypr-check` before blaming the config. Exit 1 with a Lua error is the real failure.
 - Binds live inside a single Lua heredoc in `hyprland.nix`. Nix doesn't parse it, so a Lua error only shows in `hypr-check`.
 - `wayland.windowManager.hyprland.systemd.enable = false`: uwsm owns the session. Don't add `exec-once` for daemons; add a home-manager service instead.
 - Image paths are `~/Pictures/wallpapers/greenleaves2.jpg` (hyprpaper), plus `~/Pictures/wallpapers/lockwallpaper1.jpg` and `~/Pictures/icons/icon2.1.jpg` (hyprlock). That folder is personal, so don't open it without asking. A missing file builds fine.

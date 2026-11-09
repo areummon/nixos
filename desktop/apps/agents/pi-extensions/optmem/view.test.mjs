@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OptChatMemory, mostDue } from "./memory.ts";
+import { OptMem, mostDue } from "./memory.ts";
 
 const ctx = { ui: { setStatus() {}, notify() {} } };
 const cfg = (memoryDir, viewBytes = 16000) => ({
@@ -24,8 +24,8 @@ const body = (mem) => mem.renderView().replace(/<\/chat>$/, "");
 const common = (a, b) => { let k = 0; while (k < a.length && a[k] === b[k]) k++; return k; };
 
 test("turns read nearly all of the previous view from the cache, across a restart", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "optchat-view-"));
-  let mem = new OptChatMemory(cfg(dir, 48000));
+  const dir = mkdtempSync(join(tmpdir(), "optmem-view-"));
+  let mem = new OptMem(cfg(dir, 48000));
   await mem.start(ctx);
   let prev = "", rewritten = 0, total = 0, i = 0;
   for (let turn = 0; turn < 600; turn++) {
@@ -33,7 +33,7 @@ test("turns read nearly all of the previous view from the cache, across a restar
     await settle(mem);
     if (turn === 300) {
       mem.shutdown();
-      mem = new OptChatMemory(cfg(dir, 48000));
+      mem = new OptMem(cfg(dir, 48000));
       await mem.start(ctx);
       await settle(mem);
     }
@@ -51,14 +51,14 @@ test("turns read nearly all of the previous view from the cache, across a restar
 });
 
 test("a restart keeps the view byte-identical", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "optchat-view-"));
-  let mem = new OptChatMemory(cfg(dir));
+  const dir = mkdtempSync(join(tmpdir(), "optmem-view-"));
+  let mem = new OptMem(cfg(dir));
   await mem.start(ctx);
   for (let i = 0; i < 300; i++) await mem.log("user", message(i));
   await settle(mem);
   const before = mem.renderView();
   mem.shutdown();
-  mem = new OptChatMemory(cfg(dir));
+  mem = new OptMem(cfg(dir));
   await mem.start(ctx);
   await settle(mem);
   assert.equal(mem.renderView(), before);

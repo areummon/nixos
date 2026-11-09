@@ -27,7 +27,7 @@ message not summarized yet shows as "(not summarized yet: zoom it)". A text too
 long for one message is split over several in a row."""
 
 SYSTEM_PROMPT_BLOCK = f"""\
-# OptChat memory
+# OptMem memory
 
 You work for one user in a single chat that never ends. Every message of it,
 across all sessions and channels, is logged word for word. At the start of a
@@ -35,15 +35,18 @@ session (and after a context compression) your memory arrives as the view: the
 whole chat, oldest first, inside <chat> tags, as one-line summaries. {_VIEW_FORMAT}
 
 Tools:
-- optchat_zoom(id, n) opens line id+n into the two lines it was made from;
-  optchat_zoom(id, 1) gives message id whole
-- optchat_date(id) gives the date and time of message id
+- optmem_zoom(id, n) opens line id+n into the two lines it was made from;
+  optmem_zoom(id, 1) gives message id whole
+- optmem_date(id) gives the date and time of message id
+- optmem_find(query) searches every message and summary by words and returns
+  the best id+n lines, for what the view's summaries no longer name
 
 The view is your memory, and its latest word on a thing is the truth. Whenever
 you need any information from before this session, first find its latest
-mention in the view and zoom until you have it whole, before any other source,
-and before you act, guess or ask. Zoom is the way to navigate the view; don't
-grep the memory files. Summaries keep little of tool output, so say in your
+mention in the view (or with optmem_find) and zoom until you have it whole,
+before any other source, and before you act, guess or ask. Zoom and find are the
+way to navigate the view; don't grep the memory files. Credentials are replaced
+by [redacted] in the log: never expect to recall a key, only where it lives. Summaries keep little of tool output, so say in your
 reply what you learned that will matter later."""
 
 COMPACTION_SYSTEM = f"""\

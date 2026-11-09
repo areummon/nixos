@@ -15,5 +15,6 @@
     ./mpv/mpv.nix
     ./waybar/waybar.nix
     ./agents
+    ./learnharness/learnharness.nix
   ];
 }

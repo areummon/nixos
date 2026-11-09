@@ -45,12 +45,12 @@
       --setenv XDG_CONFIG_HOME "$HOME/.config" \
       --setenv XDG_DATA_HOME "$HOME/.local/share" \
       --setenv XDG_CACHE_HOME "$HOME/.cache" \
-      ${pkgs.opencode}/bin/opencode "$@"
+      ${pkgs.llm-agents.opencode}/bin/opencode "$@"
   '';
 in {
   programs.opencode = {
     enable = true;
-    package = pkgs.opencode;
+    package = pkgs.llm-agents.opencode;
     settings = {
       model = "openrouter/deepseek/deepseek-v4.1-flash";
       small_model = "openrouter/deepseek/deepseek-v4-flash-0731";

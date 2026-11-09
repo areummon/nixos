@@ -7,7 +7,11 @@
   # nixpkgs Chromium for agent-browser (its own download fails on NixOS).
   chromiumPath = "${pkgs.unstable.chromium}/bin/chromium";
 in {
-  programs.hermes-agent.enable = true;
+  programs.hermes-agent = {
+    enable = true;
+    # Electron app; runs this same Hermes build against the service's HERMES_HOME.
+    desktop.enable = true;
+  };
 
   # Local browser automation for Hermes's browser_* tools.
   home.packages = [pkgs.unstable.agent-browser pkgs.unstable.chromium];
@@ -23,9 +27,9 @@ in {
     settings = {
       model.default = "claude-opus-5-5";
       model.provider = "anthropic";
-      # One chat that never ends (hermes-plugins/optchat), next to the built-in MEMORY.md / USER.md.
-      memory.provider = "optchat";
-      memory.optchat.compactor_model = "claude-haiku-5-5";
+      # One chat that never ends (hermes-plugins/optmem), next to the built-in MEMORY.md / USER.md.
+      memory.provider = "optmem";
+      memory.optmem.compactor_model = "claude-haiku-5-5";
       # The view (up to 128 KB) arrives as the memory prefetch. Above this cap Hermes swaps
       # a prefetch for a 1 KB preview (default 10,000 chars).
       hooks.output_spill.max_chars = 200000;
@@ -73,7 +77,7 @@ in {
 
   # Not services.hermes-agent.extraPlugins: it links plugins as nix-managed-<name>, and a
   # memory provider's directory name is its memory.provider name.
-  home.file."${config.services.hermes-agent.hermesHome}/plugins/optchat".source = ./hermes-plugins/optchat;
+  home.file."${config.services.hermes-agent.hermesHome}/plugins/optmem".source = ./hermes-plugins/optmem;
 
   systemd.user.services.hermes-agent.Service = {
     Environment = lib.mkForce [

@@ -1,11 +1,11 @@
-"""OptChat: one chat that never ends, as a Hermes MemoryProvider.
+"""OptMem: one chat that never ends, as a Hermes MemoryProvider.
 
-Every message of every session is logged word for word under <hermes_home>/optchat/, a cheap
+Every message of every session is logged word for word under <hermes_home>/optmem/, a cheap
 model compresses the log into a binary tree of one-line summaries, and each session starts
 with the view: summary lines covering the whole chat, recent ones fine and old ones coarse.
-The agent zooms a line open with ``optchat_zoom``. Design: UniiChat/OptChat (spec §1-6).
+The agent zooms a line open with ``optmem_zoom``. Design: VictorTaelin/OptMem (spec §1-6).
 
-Config: ``memory.optchat`` in config.yaml overrides ``model.Config``'s defaults.
+Config: ``memory.optmem`` in config.yaml overrides ``model.Config``'s defaults.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from .prompt import SYSTEM_PROMPT_BLOCK
 logger = logging.getLogger(__name__)
 
 ZOOM_SCHEMA = {
-    "name": "optchat_zoom",
+    "name": "optmem_zoom",
     "description": (
         "Open line id+n of the <chat> memory view into the two lines of n/2 messages it was made "
         "from; n = 1 gives message id whole. n is a power of 2 and id a multiple of n."
@@ -46,7 +46,7 @@ ZOOM_SCHEMA = {
 }
 
 DATE_SCHEMA = {
-    "name": "optchat_date",
+    "name": "optmem_date",
     "description": "The date and time of message id in the <chat> memory view.",
     "parameters": {
         "type": "object",
@@ -55,14 +55,31 @@ DATE_SCHEMA = {
     },
 }
 
+FIND_SCHEMA = {
+    "name": "optmem_find",
+    "description": (
+        "Search the whole <chat> memory by words: messages and summaries ranked by BM25, ignoring "
+        "case and accents and matching other forms of a word. Returns id+n lines, newest first; "
+        "zoom one open for the whole."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "The words to look for."},
+            "top": {"type": "integer", "description": "How many lines, 1-50 (default 10)."},
+        },
+        "required": ["query"],
+    },
+}
+
 
 def _load_config() -> Config:
     try:
         from hermes_cli.config import cfg_get, load_config_readonly
 
-        return Config.from_mapping(cfg_get(load_config_readonly(), "memory", "optchat", default={}))
+        return Config.from_mapping(cfg_get(load_config_readonly(), "memory", "optmem", default={}))
     except Exception as exc:
-        logger.warning("optchat: config unreadable (%s); using defaults", exc)
+        logger.warning("optmem: config unreadable (%s); using defaults", exc)
         return Config()
 
 
@@ -107,12 +124,12 @@ def _warn_if_view_spills(cfg: Config) -> None:
         return
     if spill.get("enabled") and spill.get("max_chars", 0) < cfg.view_bytes * 5 // 4:
         logger.warning(
-            "optchat: hooks.output_spill.max_chars=%s is below the view (up to %s bytes); "
+            "optmem: hooks.output_spill.max_chars=%s is below the view (up to %s bytes); "
             "raise it or the view is cut to a preview", spill.get("max_chars"), cfg.view_bytes,
         )
 
 
-class OptChatProvider(MemoryProvider):
+class OptMemProvider(MemoryProvider):
     def __init__(self, config: Optional[Config] = None, call=None):
         self._config = config
         self._call = call
@@ -123,7 +140,7 @@ class OptChatProvider(MemoryProvider):
 
     @property
     def name(self) -> str:
-        return "optchat"
+        return "optmem"
 
     def is_available(self) -> bool:
         return True
@@ -131,7 +148,7 @@ class OptChatProvider(MemoryProvider):
     def initialize(self, session_id: str, **kwargs) -> None:
         cfg = self._config or _load_config()
         call = self._call or (hermes_call(cfg) if cfg.compactor == "model" else None)
-        root = Path(kwargs["hermes_home"]) / "optchat"
+        root = Path(kwargs["hermes_home"]) / "optmem"
         self._mem = acquire(root, cfg, call=call, spawn=spawn_context_thread)
         # Subagents, cron and flush agents read the chat but never write it; nor does a second
         # process (the CLI while the gateway holds the lock).
@@ -139,7 +156,7 @@ class OptChatProvider(MemoryProvider):
         self._platform = str(kwargs.get("platform") or "")
         self._session_id = session_id
         if not self._mem.writable:
-            logger.info("optchat: %s is locked by another process; read-only", root)
+            logger.info("optmem: %s is locked by another process; read-only", root)
         _warn_if_view_spills(cfg)
 
     def system_prompt_block(self) -> str:
@@ -200,19 +217,22 @@ class OptChatProvider(MemoryProvider):
         self._mem.log("note", text, source_of(self._platform, meta.get("session_id", "")))
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        return [ZOOM_SCHEMA, DATE_SCHEMA]
+        return [ZOOM_SCHEMA, DATE_SCHEMA, FIND_SCHEMA]
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
         from tools.registry import tool_error
 
         if not self._mem:
-            return tool_error("optchat is not initialized")
+            return tool_error("optmem is not initialized")
         try:
             self._mem.refresh()
-            if tool_name == "optchat_zoom":
+            if tool_name == "optmem_zoom":
                 return json.dumps({"result": self._mem.zoom(int(args["id"]), int(args["n"]))}, ensure_ascii=False)
-            if tool_name == "optchat_date":
+            if tool_name == "optmem_date":
                 return json.dumps({"result": self._mem.date(int(args["id"]))})
+            if tool_name == "optmem_find":
+                top = min(max(int(args.get("top") or 10), 1), 50)
+                return json.dumps({"result": self._mem.find(str(args["query"]), top)}, ensure_ascii=False)
         except (KeyError, TypeError, ValueError) as exc:
             return tool_error(f"bad arguments: {exc}")
         return tool_error(f"Unknown tool: {tool_name}")
@@ -224,4 +244,4 @@ class OptChatProvider(MemoryProvider):
 
 
 def register(ctx) -> None:
-    ctx.register_memory_provider(OptChatProvider())
+    ctx.register_memory_provider(OptMemProvider())

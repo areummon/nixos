@@ -1,8 +1,8 @@
 # Desktop apps
 
-Firefox (profile `moka` with forced search engines, privacy and telemetry prefs, a fixed toolbar, and browserpass), VS Code (extensions stay mutable), and mpv (SDR tone-mapping for HDR video). All three come from unstable.
+Firefox (profile `moka` with forced search engines, privacy and telemetry prefs, a fixed toolbar, and browserpass), VS Code (extensions stay mutable), mpv (SDR tone-mapping for HDR video), all three from unstable, and LearnHarness, a pinned upstream AppImage.
 
-Owners: `desktop/apps/firefox/firefox.nix`, `desktop/apps/vscode/vscode.nix`, `desktop/apps/mpv/mpv.nix`, imported from `desktop/apps/default.nix`.
+Owners: `desktop/apps/firefox/firefox.nix`, `desktop/apps/vscode/vscode.nix`, `desktop/apps/mpv/mpv.nix`, `desktop/apps/learnharness/learnharness.nix`, imported from `desktop/apps/default.nix`.
 
 ## Sub-features
 
@@ -11,11 +11,13 @@ Owners: `desktop/apps/firefox/firefox.nix`, `desktop/apps/vscode/vscode.nix`, `d
 - `firefox-mime`: `xdg.mimeApps.defaultApplications` maps `text/html`, `text/xml`, `http`, and `https` to `firefox.desktop`.
 - `vscode`: `programs.vscode` with `mutableExtensionsDir = true` and extension update checks on. The only generated file is `~/.vscode/extensions/.extensions-immutable.json`.
 - `mpv`: `~/.config/mpv/mpv.conf` sets `tone-mapping=bt.2390`, `target-prim=bt.709`, `target-trc=bt.1886`, `hdr-compute-peak=no`, and `video-output-levels=full`. Home-manager writes each value length-prefixed, as `tone-mapping=%7%bt.2390`, so grep for the key, not the literal `key=value`.
+- `learnharness`: `appimageTools.wrapType2` over the GitHub release AppImage (version and hash pinned in the file). The AppImage's `.desktop` file is installed as `learnharness.desktop` with `Exec=AppRun` rewritten to `learnharness`, plus its icons.
 
 ## How to get to it (user POV)
 
 - SUPER+SHIFT+F opens Firefox (see `desktop-hyprland.md`). The search bar and toolbar match the profile.
 - Run `code` or `mpv <file>`.
+- Open LearnHarness from the launcher, or run `learnharness`.
 
 ## Driving it with verify
 
@@ -27,8 +29,10 @@ Preconditions: `$V build` after the edit.
 - **Mime defaults.** Run `$V eval home-manager.users.moka.xdg.mimeApps.defaultApplications`.
 - **mpv.** Run `$V diff-live .config/mpv/mpv.conf`.
 - **VS Code.** Run `$V eval home-manager.users.moka.programs.vscode.mutableExtensionsDir`, which gives `true`.
+- **LearnHarness.** With `B="$(cat $($V run)/toplevel.path)/etc/profiles/per-user/moka"`, run `grep ^Exec $B/share/applications/learnharness.desktop`, which gives `Exec=learnharness --no-sandbox %U`. A version bump shows in `$($V run)/closure-diff.txt`.
 
 ## Gotchas
 
 - `xdg.mimeApps.enable` is `false`, so the mime defaults never reach `~/.config/mimeapps.list`. The option evaluates, but nothing is written. Don't report a mime change as applied from the eval alone. `~/.config/mimeapps.list` is hand-managed (gThumb for PNG/JPEG, Firefox for `text/html` via `xdg-mime default`); check it with `xdg-mime query default <type>`.
+- To bump LearnHarness, change `version`, set `hash = ""`, build, and paste the hash from the error. The build fetches from GitHub.
 - `$V diff-live .mozilla/firefox/...` fails with "No such file": the profile is under `.config/mozilla`. Only the browserpass host stays in `~/.mozilla`.

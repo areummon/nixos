@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import { join, dirname, basename } from "node:path";
 import type { Config, Kind, MessageRecord, NodeRecord, Part } from "./types.ts";
 import { markViewBreakpoints } from "./cache.ts";
+import { redact } from "./redact.ts";
+import { rank, type Doc } from "./search.ts";
 import { COMPACT_PROMPT, viewBlocks } from "./prompt.ts";
 import { assertSafeImportPath, byteLen, countOf, cutBytes, exactScaleLine, flatten, heuristicSummary, idOf, localDay, pow2, safeJson, startOf, textContent } from "./util.ts";
 
@@ -23,7 +25,11 @@ export function mostDue(view: Part[], T: number, built: (l: number, i: number) =
   return best;
 }
 
-export class OptChatMemory {
+// memory_find's output: a message line is cut to FIND_LINE_BYTES (zoom gives it whole).
+const FIND_LINE_BYTES = 400;
+const FIND_BYTES = 12_000;
+
+export class OptMem {
   cfg: Config;
   root: MessageRecord[] = [];
   nodes = new Map<string, NodeRecord>();
@@ -56,7 +62,7 @@ export class OptChatMemory {
     this.load();
     this.loadView();
     this.pump();
-    ctx.ui.setStatus("optchat", `mem ${this.root.length} msgs`);
+    ctx.ui.setStatus("optmem", `mem ${this.root.length} msgs`);
     return true;
   }
 
@@ -73,7 +79,7 @@ export class OptChatMemory {
   // over. No PID files, no timeouts.
   async acquireLock() {
     if (!(await this.acquireLockSoft())) {
-      throw new Error(`optchat-memory: another process holds ${join(this.cfg.memoryDir, "lock")}; refusing to start`);
+      throw new Error(`optmem: another process holds ${join(this.cfg.memoryDir, "lock")}; refusing to start`);
     }
   }
 
@@ -130,7 +136,7 @@ export class OptChatMemory {
       if (typeof o.l === "number" && typeof o.i === "number" && typeof o.text === "string") this.nodes.set(this.key(o.l, o.i), o);
     });
     // A crash mid-write leaves a line that is not JSON: report it, skip it (§2).
-    if (torn) this.ctx?.ui.notify(`optchat-memory: skipped ${torn} torn line(s) in ${this.cfg.memoryDir}`, "warning");
+    if (torn) this.ctx?.ui.notify(`optmem: skipped ${torn} torn line(s) in ${this.cfg.memoryDir}`, "warning");
   }
 
   appendLine(sub: "main" | "tree", obj: unknown) {
@@ -153,7 +159,7 @@ export class OptChatMemory {
 
   // Resolves to the message's id once it is in the log.
   async log(kind: Kind, text: string, source?: string): Promise<number | undefined> {
-    text = String(text ?? "").trim();
+    text = redact(String(text ?? "")).trim();
     if (!text) return undefined;
     return this.enqueue(async () => {
       const rec: MessageRecord = { i: this.root.length, kind, text, size: byteLen(`${kind}: ${text}`), date: new Date().toISOString(), source };
@@ -162,7 +168,7 @@ export class OptChatMemory {
       this.grow(rec.i);
       this.saveView();
       this.pump();
-      this.ctx?.ui.setStatus("optchat", `mem ${this.root.length} msgs`);
+      this.ctx?.ui.setStatus("optmem", `mem ${this.root.length} msgs`);
       return rec.i;
     });
   }
@@ -170,7 +176,7 @@ export class OptChatMemory {
   // §10: persist after each turn. Only the append-only log and tree are
   // history; the lock, snapshots, exports and HTML stay out of the repo.
   commit(): Promise<void> {
-    const git = (...args: string[]) => promisify(execFile)("git", ["-C", this.cfg.memoryDir, "-c", "user.name=optchat-memory", "-c", "user.email=optchat-memory@localhost", ...args]);
+    const git = (...args: string[]) => promisify(execFile)("git", ["-C", this.cfg.memoryDir, "-c", "user.name=optmem", "-c", "user.email=optmem@localhost", ...args]);
     this.commits = this.commits.then(async () => {
       await git("init", "-q");
       await git("add", "main", "tree");
@@ -179,7 +185,7 @@ export class OptChatMemory {
     }).catch((err) => {
       if (this.commitFailed) return;
       this.commitFailed = true;
-      this.ctx?.ui.notify(`optchat-memory: git commit of ${this.cfg.memoryDir} failed: ${String(err)}`, "warning");
+      this.ctx?.ui.notify(`optmem: git commit of ${this.cfg.memoryDir} failed: ${String(err)}`, "warning");
     });
     return this.commits;
   }
@@ -279,7 +285,8 @@ export class OptChatMemory {
     }
     if (n === 1) {
       const m = this.root[id];
-      return m ? `${id}+0|${m.kind}: ${m.text}` : `No line ${id}+1.`;
+      // Redacted on read too: messages logged before redaction existed keep their keys.
+      return m ? `${id}+0|${m.kind}: ${redact(m.text)}` : `No line ${id}+1.`;
     }
     const l = Math.log2(n);
     const i = id / n;
@@ -287,6 +294,26 @@ export class OptChatMemory {
     const left: Part = { l: childL, i: i * 2 };
     const right: Part = { l: childL, i: i * 2 + 1 };
     return `${idOf(left)}+${countOf(left)}|${flatten(this.partText(left))}\n${idOf(right)}+${countOf(right)}|${flatten(this.partText(right))}`;
+  }
+
+  // The messages and summaries that best match query's words, newest first.
+  // Leaf summaries restate their message, which is already a document.
+  find(query: string, top = 10): string {
+    const docs: Doc<Part>[] = this.root.map(m => [m.i, m.text, { l: 0, i: m.i }]);
+    for (const n of this.nodes.values()) if (n.l > 0) docs.push([startOf(n) + countOf(n) - 1, n.text, { l: n.l, i: n.i }]);
+    const [parts, matched] = rank(docs, String(query ?? ""), Math.min(Math.max(Math.trunc(Number(top) || 10), 1), 50));
+    if (!parts.length) return "No matches.";
+    const out: string[] = [];
+    let size = 0;
+    for (const p of parts) {
+      const m = p.l === 0 ? this.root[p.i] : undefined;
+      const text = m ? cutBytes(flatten(redact(`${m.kind}: ${m.text}`)), FIND_LINE_BYTES) : redact(flatten(this.partText(p)));
+      const line = `${idOf(p)}+${countOf(p)}|${text}`;
+      size += byteLen(line) + 1;
+      if (out.length && size > FIND_BYTES) break;
+      out.push(line);
+    }
+    return `${out.join("\n")}\n${out.length} of ${matched} matching lines; zoom one open for the whole.`;
   }
 
   date(id: number): string {
@@ -403,7 +430,7 @@ export class OptChatMemory {
           this.busy.delete(k);
           if (!this.failedOnce.has(k)) {
             this.failedOnce.add(k);
-            this.ctx?.ui.notify(`optchat-memory compactor failed for ${k}: ${String(err)}`, "warning");
+            this.ctx?.ui.notify(`optmem compactor failed for ${k}: ${String(err)}`, "warning");
           }
           setTimeout(() => this.pump(), this.cfg.retryMs).unref?.();
         });
@@ -461,7 +488,7 @@ export class OptChatMemory {
     ];
     const options: any = {
       maxTokens: this.cfg.compactorMaxTokens,
-      sessionId: "optchat-compactor",
+      sessionId: "optmem-compactor",
       ...(this.cfg.compactorThinking ? { reasoning: this.cfg.compactorThinking } : {}),
       // §3.3: breakpoints on the context blocks; the context is the shared prefix.
       onPayload: (payload: unknown) => markViewBreakpoints(payload, context),

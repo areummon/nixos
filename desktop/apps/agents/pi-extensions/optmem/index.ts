@@ -1,11 +1,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { config } from "./config.ts";
-import { OptChatMemory } from "./memory.ts";
+import { OptMem } from "./memory.ts";
 import { markViewBreakpoints } from "./cache.ts";
 import { AGENT_GUIDE, MASTER_PROMPT, MEMORY_GUIDE, VIEW_DOC, viewBlocks } from "./prompt.ts";
 import { writeHtml } from "./html.ts";
 import { cap, replyText, safeJson, textContent } from "./util.ts";
+import { redact } from "./redact.ts";
 import { isPstackChild, publishSnapshot, registerPstackMemory, removePublishedSnapshot, SNAPSHOT_ENV } from "./pstack-memory.ts";
 
 export default function (pi: ExtensionAPI) {
@@ -16,7 +17,7 @@ export default function (pi: ExtensionAPI) {
     registerPstackMemory(pi, process.env[SNAPSHOT_ENV]);
     return;
   }
-  const mem = new OptChatMemory(config());
+  const mem = new OptMem(config());
 
   const memoryTools = [
     {
@@ -37,6 +38,15 @@ export default function (pi: ExtensionAPI) {
         return { content: [{ type: "text", text: mem.date(params.id) }], details: undefined };
       },
     },
+    {
+      name: "memory_find",
+      label: "Find in Memory",
+      description: "Search the whole <chat> memory by words: messages and summaries ranked by BM25, ignoring case and accents and matching other forms of a word. Returns id+n lines, newest first; zoom one open for the whole.",
+      parameters: { type: "object", properties: { query: { type: "string" }, top: { type: "number", description: "How many lines, 1-50 (default 10)." } }, required: ["query"] } as any,
+      async execute(_toolCallId: string, params: any) {
+        return { content: [{ type: "text", text: mem.find(params.query, params.top) }], details: undefined };
+      },
+    },
   ];
   // Log index of a pstack report that starts a new turn: that turn's view ends
   // before it (§7: the view is rendered before the new message is logged).
@@ -44,19 +54,19 @@ export default function (pi: ExtensionAPI) {
 
   // User-wide notes shared by every project, in its own log under its own lock.
   // Only one session can hold that lock; the others run with project memory only.
-  let globalMem: OptChatMemory | undefined;
+  let globalMem: OptMem | undefined;
 
   pi.on("session_start", async (_event, ctx) => {
     await mem.start(ctx as ExtensionContext);
     publishSnapshot(mem);
     const cfg = mem.cfg;
     if (!cfg.globalMemoryDir) return;
-    globalMem = new OptChatMemory({ ...cfg, memoryDir: cfg.globalMemoryDir, viewBytes: Math.floor(cfg.viewBytes / 4) });
+    globalMem = new OptMem({ ...cfg, memoryDir: cfg.globalMemoryDir, viewBytes: Math.floor(cfg.viewBytes / 4) });
     if (!(await globalMem.start(ctx as ExtensionContext, { soft: true }))) {
       globalMem = undefined;
-      ctx.ui.notify(`optchat-memory: another session holds the global memory in ${cfg.globalMemoryDir}; running with project memory only`, "warning");
+      ctx.ui.notify(`optmem: another session holds the global memory in ${cfg.globalMemoryDir}; running with project memory only`, "warning");
     }
-    ctx.ui.setStatus("optchat", `mem ${mem.root.length} msgs`);
+    ctx.ui.setStatus("optmem", `mem ${mem.root.length} msgs`);
   });
   pi.on("session_shutdown", async () => {
     await mem.commit();
@@ -92,7 +102,8 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("tool_result", async (event: any) => {
     if (event.parentToolCallId) return;
-    const body = textContent(event.content);
+    // Redacted before the cap, so no cut splits a key into two pieces that pass.
+    const body = redact(textContent(event.content));
     const capped = cap(body, mem.cfg.capChars);
     // Only tool results are capped (§7); other kinds are logged whole.
     await mem.log("echo", `${event.toolName}${event.isError ? " ERROR" : ""}: ${capped}`, "tool_result");
@@ -110,9 +121,9 @@ export default function (pi: ExtensionAPI) {
   // No call sees an unsummarized line (§6): wait for the compactor however
   // long, inside the run so Esc aborts it and leaves the message unanswered.
   const freeze = async (t: Turn, ctx: ExtensionContext): Promise<string[] | undefined> => {
-    if (!mem.settled(t.upTo)) ctx.ui.setStatus("optchat", "mem: waiting for compactor (Esc cancels)");
+    if (!mem.settled(t.upTo)) ctx.ui.setStatus("optmem", "mem: waiting for compactor (Esc cancels)");
     const settled = await mem.settle(ctx.signal, Infinity, t.upTo);
-    ctx.ui.setStatus("optchat", `mem ${mem.root.length} msgs`);
+    ctx.ui.setStatus("optmem", `mem ${mem.root.length} msgs`);
     if (!settled) return undefined;
     let view = mem.renderView(t.upTo);
     if (globalMem) {
@@ -180,7 +191,7 @@ export default function (pi: ExtensionAPI) {
     return { messages: [...system, view, ...rest.slice(turnStart(rest, turn))] };
   });
 
-  const needGlobal = (): OptChatMemory => {
+  const needGlobal = (): OptMem => {
     if (!globalMem) throw new Error("global memory is not active (globalMemoryDir unset, or another session holds it)");
     return globalMem;
   };
@@ -204,6 +215,15 @@ export default function (pi: ExtensionAPI) {
         return { content: [{ type: "text", text: needGlobal().date(params.id) }], details: undefined };
       },
     },
+    {
+      name: "global_find",
+      label: "Find in Global Memory",
+      description: "memory_find for the <global-memory> notes.",
+      parameters: { type: "object", properties: { query: { type: "string" }, top: { type: "number", description: "How many lines, 1-50 (default 10)." } }, required: ["query"] } as any,
+      async execute(_toolCallId: string, params: any) {
+        return { content: [{ type: "text", text: needGlobal().find(params.query, params.top) }], details: undefined };
+      },
+    },
   ];
 
   for (const tool of memoryTools) pi.registerTool(tool as any);
@@ -218,7 +238,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_status",
     label: "Memory Status",
-    description: "Show OptChat memory status, including message count, view size, and compactor state.",
+    description: "Show OptMem memory status, including message count, view size, and compactor state.",
     parameters: { type: "object", properties: {}, required: [] } as any,
     async execute() {
       const text = globalMem ? `${mem.status()}\n--- global memory ---\n${globalMem.status()}` : mem.status();
@@ -240,7 +260,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_verify",
     label: "Memory Verify",
-    description: "Verify OptChat memory log/tree/view consistency.",
+    description: "Verify OptMem memory log/tree/view consistency.",
     parameters: { type: "object", properties: {}, required: [] } as any,
     async execute() {
       return { content: [{ type: "text", text: mem.verify() }], details: undefined };
@@ -250,7 +270,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "memory_control",
     label: "Memory Control",
-    description: "Control OptChat memory: pause, resume, rebuild-tree, export, import-notes, or html (write a browsable page). global-export, global-import-notes and global-html act on the global memory.",
+    description: "Control OptMem memory: pause, resume, rebuild-tree, export, import-notes, or html (write a browsable page). global-export, global-import-notes and global-html act on the global memory.",
     parameters: {
       type: "object",
       properties: {
@@ -281,28 +301,29 @@ export default function (pi: ExtensionAPI) {
   } as any);
 
   pi.registerCommand("memory", {
-    description: "OptChat memory: status | verify | zoom <id> <n> | date <id> | pause | resume | rebuild-tree | export [path] | import-notes <path> | html [path]",
+    description: "OptMem memory: status | verify | zoom <id> <n> | date <id> | find <words> | pause | resume | rebuild-tree | export [path] | import-notes <path> | html [path]",
     handler: async (args: string, ctx: ExtensionContext) => {
-      const [cmd, a, b] = String(args ?? "").trim().split(/\s+/);
+      const [cmd, a, b, ...more] = String(args ?? "").trim().split(/\s+/);
       try {
         if (!cmd || cmd === "status") ctx.ui.notify(mem.status(), "info");
         else if (cmd === "verify") ctx.ui.notify(mem.verify(), "info");
         else if (cmd === "zoom") ctx.ui.notify(mem.zoom(Number(a), Number(b)), "info");
         else if (cmd === "date") ctx.ui.notify(mem.date(Number(a)), "info");
+        else if (cmd === "find") ctx.ui.notify(mem.find([a, b, ...more].filter(Boolean).join(" ")), "info");
         else if (cmd === "pause") {
           mem.paused = true;
-          ctx.ui.notify("optchat-memory paused", "info");
+          ctx.ui.notify("optmem paused", "info");
         } else if (cmd === "resume") {
           mem.paused = false;
           mem.pump();
-          ctx.ui.notify("optchat-memory resumed", "info");
+          ctx.ui.notify("optmem resumed", "info");
         } else if (cmd === "rebuild-tree") ctx.ui.notify(mem.rebuildTree(), "info");
         else if (cmd === "export") ctx.ui.notify(mem.exportSnapshot(a || join(mem.cfg.memoryDir, `export-${Date.now()}.json`)), "info");
         else if (cmd === "import-notes") ctx.ui.notify(await importNotes(a), "info");
         else if (cmd === "html") ctx.ui.notify(writeHtml(mem, a || join(mem.cfg.memoryDir, "memory.html")), "info");
-        else ctx.ui.notify("Usage: /memory status | verify | zoom <id> <n> | date <id> | pause | resume | rebuild-tree | export [path] | import-notes <path> | html [path]", "warning");
+        else ctx.ui.notify("Usage: /memory status | verify | zoom <id> <n> | date <id> | find <words> | pause | resume | rebuild-tree | export [path] | import-notes <path> | html [path]", "warning");
       } catch (err) {
-        ctx.ui.notify(`optchat-memory error: ${err instanceof Error ? err.message : String(err)}`, "error");
+        ctx.ui.notify(`optmem error: ${err instanceof Error ? err.message : String(err)}`, "error");
       }
     },
   });

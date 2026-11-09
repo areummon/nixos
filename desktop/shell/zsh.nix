@@ -47,7 +47,8 @@
           )
         }
         opencode() { _with_openrouter opencode "$@" }
-        codex-opencode() { _with_openrouter codex --profile opencode-delegation "$@" }
+        # Codex is unused for now (agents/codex.nix not imported); uncomment with it.
+        # codex-opencode() { _with_openrouter codex --profile opencode-delegation "$@" }
       ''
     ];
   };

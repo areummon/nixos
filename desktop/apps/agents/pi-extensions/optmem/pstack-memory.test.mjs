@@ -18,7 +18,7 @@ test('identifies only positive-depth Pstack subprocesses', () => {
 });
 
 test('private snapshot supplies original messages, summaries, dates and freezes data', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'optchat-bridge-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'optmem-bridge-test-'));
   const previous = process.env[SNAPSHOT_ENV];
   try {
     const mem = fixture(dir);
@@ -41,7 +41,7 @@ test('private snapshot supplies original messages, summaries, dates and freezes 
 });
 
 test('child exposes only read-only memory tools and no archive logging hooks', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'optchat-bridge-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'optmem-bridge-test-'));
   const previous = process.env[SNAPSHOT_ENV];
   try {
     const tools = [], hooks = new Map();
@@ -60,5 +60,5 @@ test('child exposes only read-only memory tools and no archive logging hooks', a
 test('missing snapshot never falls back to the live archive', async () => {
   const tools = [];
   registerPstackMemory({ registerTool: t => tools.push(t), on: () => {} });
-  await assert.rejects(() => tools[0].execute('', { id: 0, n: 1 }), /No parent OptChat snapshot/);
+  await assert.rejects(() => tools[0].execute('', { id: 0, n: 1 }), /No parent OptMem snapshot/);
 });

@@ -46,7 +46,7 @@ export const replyText = (content: unknown): string =>
 export const cap = (s: string, max: number) => {
   if (s.length <= max) return s;
   const half = Math.floor((max - 120) / 2);
-  return `${s.slice(0, half)}\n\n[... optchat-memory cut ${s.length - half * 2} chars ...]\n\n${s.slice(-half)}`;
+  return `${s.slice(0, half)}\n\n[... optmem cut ${s.length - half * 2} chars ...]\n\n${s.slice(-half)}`;
 };
 
 export const cutBytes = (s: string, max: number) => {

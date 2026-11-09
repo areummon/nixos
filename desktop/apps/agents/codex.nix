@@ -1,6 +1,6 @@
 {pkgs, ...}: {
   home.packages = [
-    pkgs.unstable.codex
+    pkgs.llm-agents.codex
   ];
 
   # Dedicated Codex profile for delegating to a networked OpenCode subprocess.
