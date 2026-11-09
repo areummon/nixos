@@ -4,8 +4,8 @@
   ];
 
   # Dedicated Codex profile for delegating to a networked OpenCode subprocess.
-  # The normal Codex profile remains network-disabled; use the codex-opencode
-  # shell alias to select this profile.
+  # The normal Codex profile remains network-disabled; run
+  # `codex --profile opencode-delegation` to select this profile.
   home.file.".codex/opencode-delegation.config.toml".text = ''
     sandbox_mode = "workspace-write"
     approval_policy = "on-request"

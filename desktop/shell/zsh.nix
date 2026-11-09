@@ -37,19 +37,6 @@
       ''
         export KEYTIMEOUT=1  # Reduce mode switch delay
       ''
-      # Load the OpenRouter key only into the commands that need it, instead
-      # of exporting it to every process started from the shell
-      ''
-        _with_openrouter() {
-          (
-            [ -f ~/.secrets/openrouter.env ] && set -a && source ~/.secrets/openrouter.env && set +a
-            exec "$@"
-          )
-        }
-        opencode() { _with_openrouter opencode "$@" }
-        # Codex is unused for now (agents/codex.nix not imported); uncomment with it.
-        # codex-opencode() { _with_openrouter codex --profile opencode-delegation "$@" }
-      ''
     ];
   };
 
