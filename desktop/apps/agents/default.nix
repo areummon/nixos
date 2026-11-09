@@ -10,6 +10,7 @@
     # ./codex.nix
     ./opencode.nix
     ./pi.nix
+    ./herdr.nix
     ./hermes-agent-local.nix
     # Paused Oct '26; re-add to re-enable the news/jobs workers and their timers.
     # ./hermes-agent-news.nix
