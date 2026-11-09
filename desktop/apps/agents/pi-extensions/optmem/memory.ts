@@ -9,7 +9,7 @@ import { markViewBreakpoints } from "./cache.ts";
 import { redact } from "./redact.ts";
 import { rank, type Doc } from "./search.ts";
 import { COMPACT_PROMPT, viewBlocks } from "./prompt.ts";
-import { assertSafeImportPath, byteLen, countOf, cutBytes, exactScaleLine, flatten, heuristicSummary, idOf, localDay, pow2, safeJson, startOf, textContent } from "./util.ts";
+import { assertSafeImportPath, byteLen, countOf, cutBytes, flatten, heuristicSummary, idOf, localDay, pow2, safeJson, startOf, textContent } from "./util.ts";
 
 // §3.2: the sibling pair most due to merge, as the index of its left part, or
 // -1. due = (T - last) / 2^l, written (T + 1) / 2^l - i; ties go to the oldest.
@@ -477,9 +477,11 @@ export class OptMem {
     const model = this.compactorModel();
     if (!this.ctx || !model) throw new Error(`no compactor model (${this.cfg.compactorModel ?? "chat model unset"})`);
     const N = this.cfg.nodeBytes;
+    // A bare ruler, not a sample summary: the compactor copied a sample's facts into real lines.
+    const size = `of at most ${N} bytes (about ${Math.floor(N * 70 / 512)} words), the length of this ruler:\n${"-".repeat(N)}`;
     const step = l === 0
-      ? `For scale, this line is exactly ${N} bytes:\n${exactScaleLine(N)}\n\nCompress this message into one line, in at most ${N} bytes:\n${source}`
-      : `For scale, this line is exactly ${N} bytes:\n${exactScaleLine(N)}\n\nMerge these two lines into one, in at most ${N} bytes:\n${source}`;
+      ? `Compress this message into one line ${size}\n\n${source}`
+      : `Merge these two lines into one ${size}\n\n${source}`;
     // Two blocks: the context (first, so calls share a cached prefix), then the step.
     const context = viewBlocks(this.contextBefore(l, i));
     const messages: any[] = [

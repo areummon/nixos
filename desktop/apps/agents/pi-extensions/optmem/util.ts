@@ -62,18 +62,6 @@ export function heuristicSummary(source: string, bytes: number) {
   return cutBytes(s, Math.max(64, bytes));
 }
 
-// SCALE (§4.2): a realistic, dense, multi-item summary line, tagged like a
-// real one, of exactly `bytes` bytes. Models can't count bytes; an example can.
-const SCALE = "user: wants the release build reproducible before Friday; says pin nixpkgs, not flake update, and keep CI on the self-hosted runner; talk: proposed pinning via flake.lock and caching the toolchain; tool: ran nix build .#release twice, read flake.nix and ci/release.yml; echo: second build hash differed in libfoo (timestamp in a generated header), ci file holds the runner labels; work: [m4k2] traced the header to gen-version.sh; open: strip the timestamp or set SOURCE_DATE_EPOCH (user to decide, asked today).";
-
-export function exactScaleLine(bytes: number): string {
-  if (byteLen(SCALE) >= bytes) return cutBytes(SCALE, bytes);
-  // Larger NODE settings: repeat the line's items until the size is reached.
-  let out = SCALE;
-  while (byteLen(out) < bytes) out = `${out} ${SCALE}`;
-  return cutBytes(out, bytes);
-}
-
 export function assertSafeImportPath(path: string) {
   const p = resolve(path);
   const home = process.env.HOME ? resolve(process.env.HOME) : "";
