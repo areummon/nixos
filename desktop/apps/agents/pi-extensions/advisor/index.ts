@@ -50,7 +50,9 @@ export default function (pi: ExtensionAPI) {
         { role: "system", content: ADVISOR_PROMPT },
         { role: "user", content: digest, timestamp: Date.now() },
       ];
-      const options: any = { maxTokens: MAX_TOKENS, signal, sessionId: "advisor", ...(config.thinking ? { reasoning: config.thinking } : {}) };
+      // No sessionId: transports cache a socket per id (codex keeps one open for
+      // 5 minutes) and Pi only closes its own session's on exit.
+      const options: any = { maxTokens: MAX_TOKENS, signal, ...(config.thinking ? { reasoning: config.thinking } : {}) };
       const msg: any = await ctx.modelRegistry.streamSimple(model, { messages } as any, options).result();
       if (msg?.stopReason === "error" || msg?.stopReason === "aborted") return fail(msg.errorMessage ?? msg.stopReason);
       const verdict = parseVerdict(textOf(msg?.content));

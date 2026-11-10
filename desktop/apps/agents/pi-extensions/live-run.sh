@@ -61,5 +61,5 @@ done
 
 cd "$run/proj"
 timeout "${LIVE_TIMEOUT:-240}" pi --model "$model" --mode json "$@" \
-  >"$run/events.jsonl" 2>"$run/stderr.log" || echo "pi exited $?" >>"$run/stderr.log"
+  </dev/null >"$run/events.jsonl" 2>"$run/stderr.log" || echo "pi exited $?" >>"$run/stderr.log"
 echo "$run"
