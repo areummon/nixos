@@ -7,7 +7,7 @@
   projectsBaseDir = "${config.xdg.dataHome}/pi/optmem/projects";
   globalMemoryDir = "${config.xdg.dataHome}/pi/optmem/global";
   # Listed order is load and hook order (extensions/ is readdir order); OptMem last logs what the model sees.
-  localExtensions = ["gondolin" "optmem"];
+  localExtensions = ["gondolin" "hashline" "diagnostics" "advisor" "optmem"];
   localExtensionDir = name: "${config.home.homeDirectory}/.pi/agent/pi-extensions/${name}";
   # Keep JSON key order: the permission extension uses the last matching rule.
   # bash runs in the gondolin VM, which sees only the cwd, so the rules gate
@@ -149,7 +149,22 @@ in {
 
   # Extension sources are declarative; runtime data stays mutable under XDG data.
   home.file.".pi/agent/pi-extensions/gondolin".source = ./pi-extensions/gondolin;
+  home.file.".pi/agent/pi-extensions/hashline".source = ./pi-extensions/hashline;
+  home.file.".pi/agent/pi-extensions/diagnostics".source = ./pi-extensions/diagnostics;
+  home.file.".pi/agent/pi-extensions/advisor".source = ./pi-extensions/advisor;
   home.file.".pi/agent/pi-extensions/optmem".source = ./pi-extensions/optmem;
+  # Checkers run in the gondolin VM, never on the host; a missing checker is a no-op.
+  home.file.".pi/agent/diagnostics.json".text = builtins.toJSON {
+    timeoutMs = 15000;
+    maxChars = 4000;
+    disabled = [];
+  };
+  home.file.".pi/agent/advisor.json".text = builtins.toJSON {
+    enabled = true;
+    model = "anthropic/claude-sonnet-5-5";
+    timeoutMs = 20000;
+    maxDigestChars = 12000;
+  };
   # Pi resolves an extension's bare imports from its symlink path, so this link
   # lets the gondolin extension find the package Pi's npm policy installs.
   home.file.".pi/agent/node_modules".source =
