@@ -60,6 +60,6 @@ for c in "${configs[@]}"; do
 done
 
 cd "$run/proj"
-timeout "${LIVE_TIMEOUT:-240}" pi --model "$model" --mode json "$@" \
+timeout "${LIVE_TIMEOUT:-240}" pi --model "$model" --mode json "$@" </dev/null \
   >"$run/events.jsonl" 2>"$run/stderr.log" || echo "pi exited $?" >>"$run/stderr.log"
 echo "$run"
