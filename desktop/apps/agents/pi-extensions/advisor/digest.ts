@@ -1,5 +1,5 @@
 export type DigestCall = { name: string; args: string; result: string; isError: boolean };
-export type Digest = { request: string; earlierNotes: string[]; earlierCalls: string[]; assistantText: string; calls: DigestCall[]; diff: string };
+export type Digest = { request: string; earlierNotes: string[]; earlierCalls: string[]; harnessRules: string[]; assistantText: string; calls: DigestCall[]; diff: string };
 
 // Structural slices of Pi's messages, so this module imports nothing from Pi.
 type Block = { type: string; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> };
@@ -11,7 +11,7 @@ export type TurnInput = {
 };
 
 // Shares sum below 1 to leave room for the tags renderDigest adds.
-const SHARE = { request: 0.15, earlierNotes: 0.05, earlierCalls: 0.05, assistantText: 0.15, calls: 0.25, diff: 0.3 };
+const SHARE = { request: 0.15, earlierNotes: 0.05, earlierCalls: 0.05, harnessRules: 0.03, assistantText: 0.12, calls: 0.25, diff: 0.3 };
 const ARG_STRING_CHARS = 160;
 
 const blocks = (content: unknown): Block[] =>
@@ -71,6 +71,9 @@ export function buildDigest(turn: TurnInput, maxChars: number): Digest {
   // Without its own earlier notes the advisor contradicts them once the agent acts on one.
   const notes = turn.contextMessages.slice(userAt + 1).filter((m) => m.role === "custom" && m.customType === "advisor");
   const perNote = Math.floor(budget(SHARE.earlierNotes) / Math.max(1, notes.length));
+  // Rules the harness enforced (stream-rules) override the request; without
+  // them the advisor asks the agent to undo a correction.
+  const rules = turn.contextMessages.slice(userAt + 1).filter((m) => m.role === "custom" && m.customType === "stream-rule");
   const calls = toolCallsOf(turn.message.content);
   // Without the run's earlier calls a final "done" looks like work never done.
   const current = new Set(calls.map((c) => c.id));
@@ -88,6 +91,7 @@ export function buildDigest(turn: TurnInput, maxChars: number): Digest {
   return {
     request: clip(textOf(user?.content), budget(SHARE.request)),
     earlierNotes: notes.map((m) => clip(textOf(m.content), perNote)),
+    harnessRules: rules.map((m) => clip(textOf(m.content), Math.floor(budget(SHARE.harnessRules) / rules.length))),
     earlierCalls: clip(earlier.join("\n"), budget(SHARE.earlierCalls)).split("\n").filter(Boolean),
     assistantText: clip(textOf(turn.message.content), budget(SHARE.assistantText)),
     calls: calls.map((c) => {
@@ -108,11 +112,12 @@ export function renderDigest(d: Digest, maxChars: number): string {
   const parts = [
     `<request>\n${d.request}\n</request>`,
     d.earlierNotes.length > 0 && `<your-earlier-notes>\n${d.earlierNotes.join("\n")}\n</your-earlier-notes>`,
+    d.harnessRules.length > 0 && `<harness-rules>\n${d.harnessRules.join("\n")}\n</harness-rules>`,
     d.earlierCalls.length > 0 && `<earlier-in-this-run>\n${d.earlierCalls.join("\n")}\n</earlier-in-this-run>`,
     d.assistantText && `<assistant>\n${d.assistantText}\n</assistant>`,
     ...calls,
     d.diff && `<diff>\n${d.diff}\n</diff>`,
-    calls.length === 0 && "(no tool calls: this is the agent's final answer)",
+    calls.length === 0 ? "(no tool calls: this is the agent's final answer)" : "(mid-run step: the agent keeps working after this turn)",
   ].filter(Boolean);
   return clip(parts.join("\n"), maxChars);
 }

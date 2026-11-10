@@ -27,6 +27,19 @@ export function skipReason(t: TurnFacts): string | undefined {
 export const shouldContinue = (level: Level, finalAnswer: boolean, continuedThisRun: boolean) =>
   level === "blocker" && finalAnswer && !continuedThisRun;
 
+const words = (text: string) => new Set(text.toLowerCase().replace(/^\[advisor \w+\]\s*/, "").match(/[a-z0-9_.]+/g) ?? []);
+
+// The prompt asks for no repeats, but cheap models repeat anyway; a note that
+// mostly shares its words with an earlier one this run is dropped.
+export function isRepeat(note: string, earlier: string[]): boolean {
+  const a = words(note);
+  return earlier.some((e) => {
+    const b = words(e);
+    const shared = [...a].filter((w) => b.has(w)).length;
+    return shared / Math.max(1, new Set([...a, ...b]).size) >= 0.5;
+  });
+}
+
 export type AdvisorState = { enabled: boolean; model: string };
 
 export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: { total: number } };

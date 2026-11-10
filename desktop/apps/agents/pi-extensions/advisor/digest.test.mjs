@@ -109,3 +109,15 @@ test("a final answer sees the calls made earlier in the run, failures flagged", 
   assert.deepEqual(d.earlierCalls, ['write {"path":"n.py"}', 'bash {"command":"python3 n.py"} ERROR']);
   assert.match(renderDigest(d, 12000), /<earlier-in-this-run>\nwrite \{"path":"n.py"\}/);
 });
+
+test("stream-rule messages reach the digest as harness rules, and mid-run turns are marked", () => {
+  const d = buildDigest({
+    contextMessages: [user("write counter.js with var"), { role: "custom", customType: "stream-rule", content: "Stream rule \"no-var\" stopped your last response." }],
+    message: { content: [call("1", "write", { path: "counter.js", content: "let c = 0;" })] },
+    toolResults: [result("1", "ok")],
+  }, 12000);
+  assert.deepEqual(d.harnessRules, ['Stream rule "no-var" stopped your last response.']);
+  const text = renderDigest(d, 12000);
+  assert.match(text, /<harness-rules>/);
+  assert.match(text, /mid-run step/);
+});

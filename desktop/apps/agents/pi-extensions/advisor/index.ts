@@ -3,7 +3,7 @@ import { Container, Text } from "@earendil-works/pi-tui";
 import { loadConfig } from "./config.ts";
 import { buildDigest, renderDigest, textOf, toolCallsOf } from "./digest.ts";
 import {
-  CALL_ENTRY, type AdvisorState, type CallRecord, latestState, parseCommand, shouldContinue, skipReason, STATE_ENTRY, tally,
+  CALL_ENTRY, type AdvisorState, type CallRecord, isRepeat, latestState, parseCommand, shouldContinue, skipReason, STATE_ENTRY, tally,
 } from "./policy.ts";
 import { ADVISOR_PROMPT, NONE, parseVerdict, type Verdict } from "./verdict.ts";
 
@@ -79,8 +79,9 @@ export default function (pi: ExtensionAPI) {
     );
     const { verdict, record } = await advise(ctx, renderDigest(digest, config.maxDigestChars));
     showStatus(ctx, record.error ? `failed: ${record.error}` : undefined);
-    const entries = [...event.entries, { type: "custom" as const, customType: CALL_ENTRY, data: record }];
-    if (verdict.level === "none") return { entries };
+    const repeat = verdict.level !== "none" && isRepeat(verdict.note, digest.earlierNotes);
+    const entries = [...event.entries, { type: "custom" as const, customType: CALL_ENTRY, data: repeat ? { ...record, repeat } : record }];
+    if (verdict.level === "none" || repeat) return { entries };
     entries.push({
       type: "custom_message",
       customType: "advisor",

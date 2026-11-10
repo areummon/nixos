@@ -60,3 +60,11 @@ test("config: missing is defaults, bad fields are named and defaulted", () => {
   assert.deepEqual(bad.problems, ["enabled", "model", "maxDigestChars", "thinking"]);
   assert.deepEqual(parseConfig([1]).problems, ["not an object"]);
 });
+
+test("a note that mostly repeats an earlier one is a repeat; a new one is not", async () => {
+  const { isRepeat } = await import("./policy.ts");
+  const earlier = ["[advisor concern] `counter.js` uses `let`, but the request requires `var`. Change it to `var counter = 0;`."];
+  assert.equal(isRepeat("`counter.js` uses `let`, contrary to the request to declare it with `var`. Change it to `var counter = 0;`.", earlier), true);
+  assert.equal(isRepeat("`calc.py` add() returns a - b instead of a + b.", earlier), false);
+  assert.equal(isRepeat("anything", []), false);
+});
