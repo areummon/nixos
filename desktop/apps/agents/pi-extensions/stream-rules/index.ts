@@ -8,6 +8,14 @@ import { loadConfig } from "./rules.ts";
 const MESSAGE_TYPE = "stream-rule";
 const SECTION = "stream-rules";
 
+type BranchEntry = { type: string; message?: { role: string; content?: unknown } };
+
+const latestUserText = (branch: BranchEntry[]): string => {
+  const content = branch.findLast((e) => e.type === "message" && e.message?.role === "user")?.message?.content;
+  if (typeof content === "string") return content;
+  return Array.isArray(content) ? content.filter((b) => b?.type === "text").map((b) => b.text).join("\n") : "";
+};
+
 export default function (pi: ExtensionAPI) {
   const { config, problems } = loadConfig();
   const cap = new FireCap(config.maxFiresPerRule);
@@ -58,7 +66,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Only a run this extension aborted has pending set, so a user's Esc never resumes.
-  pi.on("agent_settled", async () => {
+  pi.on("agent_settled", async (_event, ctx) => {
     if (!pending) return;
     const { fire, kept = [] } = pending;
     pending = undefined;
@@ -66,7 +74,7 @@ export default function (pi: ExtensionAPI) {
     pi.sendMessage(
       {
         customType: MESSAGE_TYPE,
-        content: reminderText(fire, kept),
+        content: reminderText(fire, kept, latestUserText(ctx.sessionManager.getBranch() as any)),
         display: true,
         details: { ruleId: fire.rule.id, kind: fire.kind, ...(fire.kind === "tool" ? { tool: fire.tool, path: fire.path } : {}) },
       },

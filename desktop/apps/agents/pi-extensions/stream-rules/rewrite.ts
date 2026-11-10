@@ -35,16 +35,25 @@ export function truncate(message: AssistantLike, kept: string[]): AssistantLike 
   return { ...rest, content: kept.map((text) => ({ type: "text", text })), stopReason: "stop" };
 }
 
-export function reminderText(fire: Fire, kept: string[]): string {
+export const REQUEST_CHARS = 2000;
+
+// The resumed turn is a new run, and OptMem shows a new run only the memory
+// view and its input, so the request travels with the reminder.
+const withRequest = (text: string, request: string) =>
+  request.trim() === ""
+    ? text
+    : `${text}\n\nThe user's request you are working on, of which this was one step:\n<request>\n${request.length > REQUEST_CHARS ? `${request.slice(0, REQUEST_CHARS)}…` : request}\n</request>\nFinish every part of it that is not done yet.`;
+
+export function reminderText(fire: Fire, kept: string[], request = ""): string {
   const head = `Stream rule "${fire.rule.id}" stopped your last response. ${fire.rule.reminder}`;
   if (fire.kind === "tool") {
     const target = fire.path ? ` for ${fire.path}` : "";
-    return `${head}\n\nYour ${fire.tool} call${target} was discarded before it ran. Make the call again, following the rule.`;
+    return withRequest(`${head}\n\nYour ${fire.tool} call${target} was discarded before it ran. Make the call again, following the rule.`, request);
   }
   const prefix = kept.join("\n\n");
-  if (prefix === "") return `${head}\n\nNothing of that response was kept. Write it again, following the rule.`;
+  if (prefix === "") return withRequest(`${head}\n\nNothing of that response was kept. Write it again, following the rule.`, request);
   const tail = prefix.length > QUOTE_CHARS ? `…${prefix.slice(-QUOTE_CHARS)}` : prefix;
-  return `${head}\n\nYour response was cut where the rule matched. It ended with:\n<kept>\n${tail}\n</kept>\nContinue from exactly that point, following the rule. Do not repeat the kept text.`;
+  return withRequest(`${head}\n\nYour response was cut where the rule matched. It ended with:\n<kept>\n${tail}\n</kept>\nContinue from exactly that point, following the rule. Do not repeat the kept text.`, request);
 }
 
 export function sectionText(rules: readonly Rule[]): string | undefined {

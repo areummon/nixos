@@ -60,3 +60,11 @@ test("the section lists fired rules and is absent until one fires", () => {
   assert.equal(sectionText([]), undefined);
   assert.match(sectionText([rule]), /- seven: Write 7, not seven\./);
 });
+
+test("the reminder carries the user's request, clipped, so a resumed run under OptMem can finish it", () => {
+  const rule = { id: "no-var", reminder: "Use let." };
+  const r = reminderText({ rule, kind: "tool", contentIndex: 0, tool: "write", path: "a.js" }, [], "1) a 2) b");
+  assert.match(r, /<request>\n1\) a 2\) b\n<\/request>\nFinish every part/);
+  assert.doesNotMatch(reminderText({ rule, kind: "tool", contentIndex: 0, tool: "write" }, []), /<request>/);
+  assert.ok(reminderText({ rule, kind: "text", contentIndex: 0, matchIndex: 0 }, [], "x".repeat(5000)).length < 2500);
+});
