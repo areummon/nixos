@@ -1,17 +1,17 @@
 export type DigestCall = { name: string; args: string; result: string; isError: boolean };
-export type Digest = { request: string; assistantText: string; calls: DigestCall[]; diff: string };
+export type Digest = { request: string; earlierNotes: string[]; assistantText: string; calls: DigestCall[]; diff: string };
 
 // Structural slices of Pi's messages, so this module imports nothing from Pi.
 type Block = { type: string; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> };
 export type ToolCall = { id: string; name: string; arguments: Record<string, unknown> };
 export type TurnInput = {
-  contextMessages: Array<{ role: string; content?: unknown }>;
+  contextMessages: Array<{ role: string; content?: unknown; customType?: string }>;
   message: { content: unknown };
   toolResults: Array<{ toolCallId: string; content: unknown; isError: boolean }>;
 };
 
 // Shares sum below 1 to leave room for the tags renderDigest adds.
-const SHARE = { request: 0.15, assistantText: 0.15, calls: 0.3, diff: 0.35 };
+const SHARE = { request: 0.15, earlierNotes: 0.05, assistantText: 0.15, calls: 0.25, diff: 0.35 };
 const ARG_STRING_CHARS = 160;
 
 const blocks = (content: unknown): Block[] =>
@@ -66,7 +66,11 @@ function compactArgs(call: ToolCall): string {
 
 export function buildDigest(turn: TurnInput, maxChars: number): Digest {
   const budget = (share: number) => Math.floor(maxChars * share);
-  const user = turn.contextMessages.findLast((m) => m.role === "user");
+  const userAt = turn.contextMessages.findLastIndex((m) => m.role === "user");
+  const user = turn.contextMessages[userAt];
+  // Without its own earlier notes the advisor contradicts them once the agent acts on one.
+  const notes = turn.contextMessages.slice(userAt + 1).filter((m) => m.role === "custom" && m.customType === "advisor");
+  const perNote = Math.floor(budget(SHARE.earlierNotes) / Math.max(1, notes.length));
   const calls = toolCallsOf(turn.message.content);
   const results = new Map(turn.toolResults.map((r) => [r.toolCallId, r]));
   const perCall = Math.floor(budget(SHARE.calls) / Math.max(1, calls.length));
@@ -74,6 +78,7 @@ export function buildDigest(turn: TurnInput, maxChars: number): Digest {
   const perDiff = Math.floor(budget(SHARE.diff) / Math.max(1, changed.length));
   return {
     request: clip(textOf(user?.content), budget(SHARE.request)),
+    earlierNotes: notes.map((m) => clip(textOf(m.content), perNote)),
     assistantText: clip(textOf(turn.message.content), budget(SHARE.assistantText)),
     calls: calls.map((c) => {
       const result = results.get(c.id);
@@ -92,6 +97,7 @@ export function renderDigest(d: Digest, maxChars: number): string {
   const calls = d.calls.map((c) => `<call name="${c.name}"${c.isError ? " error" : ""}>\nargs: ${c.args}\nresult: ${c.result}\n</call>`);
   const parts = [
     `<request>\n${d.request}\n</request>`,
+    d.earlierNotes.length > 0 && `<your-earlier-notes>\n${d.earlierNotes.join("\n")}\n</your-earlier-notes>`,
     d.assistantText && `<assistant>\n${d.assistantText}\n</assistant>`,
     ...calls,
     d.diff && `<diff>\n${d.diff}\n</diff>`,

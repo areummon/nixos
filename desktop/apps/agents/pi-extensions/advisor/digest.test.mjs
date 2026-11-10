@@ -60,7 +60,7 @@ test("huge fields stay inside their budgets and the render is hard-capped", () =
   }, max);
   assert.ok(d.request.length <= max * 0.15);
   assert.ok(d.assistantText.length <= max * 0.15);
-  for (const c of d.calls) assert.ok(c.args.length + c.result.length <= max * 0.3 / 2);
+  for (const c of d.calls) assert.ok(c.args.length + c.result.length <= max * 0.25 / 2);
   assert.ok(d.diff.length <= max * 0.35 + 200, `diff ${d.diff.length}`);
   const text = renderDigest(d, max);
   assert.ok(text.length <= max, `render ${text.length}`);
@@ -79,4 +79,15 @@ test("clip keeps head and tail by default, head only on request", () => {
 test("a final answer is labelled as such in the render", () => {
   const d = buildDigest({ contextMessages: [user("q")], message: { content: [{ type: "text", text: "a" }] }, toolResults: [] }, 12000);
   assert.match(renderDigest(d, 12000), /final answer/);
+});
+
+test("earlier advisor notes come from this run only", () => {
+  const note = (text) => ({ role: "custom", customType: "advisor", content: text });
+  const d = buildDigest({
+    contextMessages: [user("first"), note("[advisor aside] stale"), user("second"), note("[advisor concern] keep the body"), { role: "custom", customType: "other", content: "x" }],
+    message: { content: [{ type: "text", text: "ok" }] },
+    toolResults: [],
+  }, 12000);
+  assert.deepEqual(d.earlierNotes, ["[advisor concern] keep the body"]);
+  assert.match(renderDigest(d, 12000), /<your-earlier-notes>\n\[advisor concern\] keep the body\n<\/your-earlier-notes>/);
 });
