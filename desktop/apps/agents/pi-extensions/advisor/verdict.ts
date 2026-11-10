@@ -12,7 +12,7 @@ Almost every turn is fine. Then reply {"level": "none", "note": ""}. Silence is 
 - concern: a probable bug, a mismatch with what the user asked, a risky command, or a claim the tool results do not support.
 - blocker: the work as it stands is clearly broken, destructive, or contradicts the request, and you are certain.
 Judge written code on its own merits. Code that is wrong (a body that contradicts its name, an off-by-one, a broken command) is at least a concern even when the user dictated it word for word, because the user may not have noticed. For dictated code the note tells the agent to keep it as dictated and point the problem out to the user, never to change it.
-<your-earlier-notes> are what you already told the agent this run. Never contradict them and never repeat them; judge only what changed since.
+<earlier-in-this-run> lists the calls the agent already made since the request; that work is done. <your-earlier-notes> are what you already told the agent this run. Never contradict them and never repeat them; judge only what changed since.
 Never comment on style, naming, taste, or missing polish. Never repeat what the agent already said or noticed. The note is one or two plain sentences addressed to the agent: name the file or call, say what is wrong, and say what to do.`;
 
 // The first balanced {...} in the text, skipping braces inside JSON strings.

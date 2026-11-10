@@ -91,3 +91,21 @@ test("earlier advisor notes come from this run only", () => {
   assert.deepEqual(d.earlierNotes, ["[advisor concern] keep the body"]);
   assert.match(renderDigest(d, 12000), /<your-earlier-notes>\n\[advisor concern\] keep the body\n<\/your-earlier-notes>/);
 });
+
+test("a final answer sees the calls made earlier in the run, failures flagged", () => {
+  const d = buildDigest({
+    contextMessages: [
+      user("old ask"),
+      { role: "assistant", content: [call("0", "bash", { command: "ls" })] },
+      user("create n.py"),
+      { role: "assistant", content: [call("1", "write", { path: "n.py", content: "print('hi')" }), call("2", "bash", { command: "python3 n.py" })] },
+      { role: "toolResult", toolCallId: "1", content: [], isError: false },
+      { role: "toolResult", toolCallId: "2", content: [], isError: true },
+      { role: "assistant", content: [{ type: "text", text: "done" }] },
+    ],
+    message: { content: [{ type: "text", text: "done" }] },
+    toolResults: [],
+  }, 12000);
+  assert.deepEqual(d.earlierCalls, ['write {"path":"n.py"}', 'bash {"command":"python3 n.py"} ERROR']);
+  assert.match(renderDigest(d, 12000), /<earlier-in-this-run>\nwrite \{"path":"n.py"\}/);
+});

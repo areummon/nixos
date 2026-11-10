@@ -1,17 +1,17 @@
 export type DigestCall = { name: string; args: string; result: string; isError: boolean };
-export type Digest = { request: string; earlierNotes: string[]; assistantText: string; calls: DigestCall[]; diff: string };
+export type Digest = { request: string; earlierNotes: string[]; earlierCalls: string[]; assistantText: string; calls: DigestCall[]; diff: string };
 
 // Structural slices of Pi's messages, so this module imports nothing from Pi.
 type Block = { type: string; text?: string; id?: string; name?: string; arguments?: Record<string, unknown> };
 export type ToolCall = { id: string; name: string; arguments: Record<string, unknown> };
 export type TurnInput = {
-  contextMessages: Array<{ role: string; content?: unknown; customType?: string }>;
+  contextMessages: Array<{ role: string; content?: unknown; customType?: string; toolCallId?: string; isError?: boolean }>;
   message: { content: unknown };
   toolResults: Array<{ toolCallId: string; content: unknown; isError: boolean }>;
 };
 
 // Shares sum below 1 to leave room for the tags renderDigest adds.
-const SHARE = { request: 0.15, earlierNotes: 0.05, assistantText: 0.15, calls: 0.25, diff: 0.35 };
+const SHARE = { request: 0.15, earlierNotes: 0.05, earlierCalls: 0.05, assistantText: 0.15, calls: 0.25, diff: 0.3 };
 const ARG_STRING_CHARS = 160;
 
 const blocks = (content: unknown): Block[] =>
@@ -72,6 +72,15 @@ export function buildDigest(turn: TurnInput, maxChars: number): Digest {
   const notes = turn.contextMessages.slice(userAt + 1).filter((m) => m.role === "custom" && m.customType === "advisor");
   const perNote = Math.floor(budget(SHARE.earlierNotes) / Math.max(1, notes.length));
   const calls = toolCallsOf(turn.message.content);
+  // Without the run's earlier calls a final "done" looks like work never done.
+  const current = new Set(calls.map((c) => c.id));
+  const since = turn.contextMessages.slice(userAt + 1);
+  const failed = new Set(since.filter((m) => m.role === "toolResult" && m.isError).map((m) => m.toolCallId));
+  const earlier = since
+    .filter((m) => m.role === "assistant")
+    .flatMap((m) => toolCallsOf(m.content))
+    .filter((c) => !current.has(c.id))
+    .map((c) => `${c.name} ${clip(compactArgs(c), ARG_STRING_CHARS)}${failed.has(c.id) ? " ERROR" : ""}`);
   const results = new Map(turn.toolResults.map((r) => [r.toolCallId, r]));
   const perCall = Math.floor(budget(SHARE.calls) / Math.max(1, calls.length));
   const changed = calls.filter((c) => DIFFS[c.name] && results.get(c.id)?.isError === false);
@@ -79,6 +88,7 @@ export function buildDigest(turn: TurnInput, maxChars: number): Digest {
   return {
     request: clip(textOf(user?.content), budget(SHARE.request)),
     earlierNotes: notes.map((m) => clip(textOf(m.content), perNote)),
+    earlierCalls: clip(earlier.join("\n"), budget(SHARE.earlierCalls)).split("\n").filter(Boolean),
     assistantText: clip(textOf(turn.message.content), budget(SHARE.assistantText)),
     calls: calls.map((c) => {
       const result = results.get(c.id);
@@ -98,6 +108,7 @@ export function renderDigest(d: Digest, maxChars: number): string {
   const parts = [
     `<request>\n${d.request}\n</request>`,
     d.earlierNotes.length > 0 && `<your-earlier-notes>\n${d.earlierNotes.join("\n")}\n</your-earlier-notes>`,
+    d.earlierCalls.length > 0 && `<earlier-in-this-run>\n${d.earlierCalls.join("\n")}\n</earlier-in-this-run>`,
     d.assistantText && `<assistant>\n${d.assistantText}\n</assistant>`,
     ...calls,
     d.diff && `<diff>\n${d.diff}\n</diff>`,
