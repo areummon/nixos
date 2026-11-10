@@ -91,7 +91,10 @@ export default function (pi: ExtensionAPI) {
       if (!ws) throw new Error("hashedit needs the gondolin workspace");
       const parsed = parseEdits(params.edits);
       if (!parsed.ok) throw new Error(`hashedit: ${parsed.error}`);
-      const target = path.resolve(ws.hostRoot, params.path.replace(/^@/, ""));
+      // The model sees its cwd as the guest root, so it may name /workspace/... paths.
+      const p = params.path.replace(/^@/, "");
+      const rel = p === ws.guestRoot || p.startsWith(`${ws.guestRoot}/`) ? p.slice(ws.guestRoot.length + 1) : p;
+      const target = path.resolve(ws.hostRoot, rel);
 
       return withFileMutationQueue(target, async () => {
         const result = applyEdits((await ws.readFile(target)).toString("utf-8"), parsed.edits);
