@@ -6,6 +6,9 @@
 }: let
   projectsBaseDir = "${config.xdg.dataHome}/pi/optmem/projects";
   globalMemoryDir = "${config.xdg.dataHome}/pi/optmem/global";
+  # Listed order is load and hook order (extensions/ is readdir order); OptMem last logs what the model sees.
+  localExtensions = ["gondolin" "hashline" "diagnostics" "stream-rules" "advisor" "optmem"];
+  localExtensionDir = name: "${config.home.homeDirectory}/.pi/agent/pi-extensions/${name}";
   # Keep JSON key order: the permission extension uses the last matching rule.
   # bash runs in the gondolin VM, which sees only the cwd, so the rules gate
   # what can hurt the workspace or leave the machine, and the classifier judges
@@ -91,6 +94,7 @@ in {
     defaultTools = ["+codemode"];
     # OptMem spec §8: no cache keep-alive pings; a long tool rewrites its entries.
     cacheWarming = "off";
+    extensions = map localExtensionDir localExtensions;
     packages = [
       "npm:pi-web-access@0.35.0"
       # Listed before the permission system so its judge registers at startup.
@@ -143,10 +147,49 @@ in {
     timeoutMs = 8000;
   };
 
-  # OptMem-style durable memory extension. Source is declarative; runtime data
-  # stays mutable under XDG data, not in the Nix store.
-  home.file.".pi/agent/extensions/optmem".source = ./pi-extensions/optmem;
-  home.file.".pi/agent/extensions/gondolin".source = ./pi-extensions/gondolin;
+  # Extension sources are declarative; runtime data stays mutable under XDG data.
+  home.file.".pi/agent/pi-extensions/gondolin".source = ./pi-extensions/gondolin;
+  home.file.".pi/agent/pi-extensions/hashline".source = ./pi-extensions/hashline;
+  home.file.".pi/agent/pi-extensions/diagnostics".source = ./pi-extensions/diagnostics;
+  home.file.".pi/agent/pi-extensions/stream-rules".source = ./pi-extensions/stream-rules;
+  home.file.".pi/agent/pi-extensions/advisor".source = ./pi-extensions/advisor;
+  home.file.".pi/agent/pi-extensions/optmem".source = ./pi-extensions/optmem;
+  # Checkers run in the gondolin VM, never on the host; a missing checker is a no-op.
+  home.file.".pi/agent/diagnostics.json".text = builtins.toJSON {
+    timeoutMs = 15000;
+    maxChars = 4000;
+    disabled = [];
+  };
+  # A rule costs no context until it fires; then it aborts, cuts and regenerates.
+  home.file.".pi/agent/stream-rules.json".text = builtins.toJSON {
+    maxFiresPerRule = 2;
+    rules = [
+      {
+        id = "no-system-switch";
+        pattern = "\\b(nixos-rebuild|home-manager\\s+switch)\\b";
+        scope = {
+          "in" = ["tool"];
+          tools = ["bash"];
+        };
+        reminder = "Never run nixos-rebuild or home-manager switch: build with the nix tool and let the user apply the change.";
+      }
+      {
+        id = "no-env-files";
+        pattern = "(^|[\\s/\"'=])\\.env(\\.(?!example\\b)[\\w.-]+)?(?=$|[\\s\"'/])";
+        scope = {
+          "in" = ["tool"];
+          tools = ["read" "bash" "grep" "find"];
+        };
+        reminder = "Never read .env files or their variants (.env.example is fine): ask the user to pass the value as an environment variable.";
+      }
+    ];
+  };
+  home.file.".pi/agent/advisor.json".text = builtins.toJSON {
+    enabled = true;
+    model = "anthropic/claude-sonnet-5-5";
+    timeoutMs = 20000;
+    maxDigestChars = 12000;
+  };
   # Pi resolves an extension's bare imports from its symlink path, so this link
   # lets the gondolin extension find the package Pi's npm policy installs.
   home.file.".pi/agent/node_modules".source =

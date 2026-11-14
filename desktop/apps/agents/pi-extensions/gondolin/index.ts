@@ -19,6 +19,8 @@ import {
 
 import { RealFSProvider, VM } from "@earendil-works/gondolin";
 
+import { WORKSPACE_EVENT, type Workspace } from "./workspace.ts";
+
 const GUEST_WORKSPACE = "/workspace";
 
 function shQuote(value: string): string {
@@ -132,6 +134,48 @@ function createGondolinBashOps(vm: VM, localCwd: string): BashOperations {
         throw err;
       } finally {
         if (timer) clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+      }
+    },
+  };
+}
+
+function createWorkspace(
+  ensureVm: () => Promise<VM>,
+  localCwd: string,
+): Workspace {
+  const guest = (p: string) => toGuestPath(localCwd, path.resolve(localCwd, p));
+  return {
+    hostRoot: localCwd,
+    guestRoot: GUEST_WORKSPACE,
+    toGuestPath: guest,
+    readFile: async (p) => (await ensureVm()).fs.readFile(guest(p)),
+    writeFile: async (p, content) => {
+      const vm = await ensureVm();
+      await vm.fs.mkdir(path.posix.dirname(guest(p)), { recursive: true });
+      await vm.fs.writeFile(guest(p), content);
+    },
+    exec: async (argv, { cwd, timeoutMs, signal }) => {
+      const vm = await ensureVm();
+      const ac = new AbortController();
+      const onAbort = () => ac.abort();
+      signal?.addEventListener("abort", onAbort, { once: true });
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        ac.abort();
+      }, timeoutMs);
+      try {
+        const r = await vm.exec(argv, {
+          cwd: cwd ? guest(cwd) : GUEST_WORKSPACE,
+          signal: ac.signal,
+        });
+        return { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr, timedOut };
+      } catch (err) {
+        if (timedOut) return { exitCode: null, stdout: "", stderr: "", timedOut };
+        throw err;
+      } finally {
+        clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
       }
     },
@@ -264,6 +308,9 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (_event, ctx) => {
+    // Hashline and diagnostics subscribe at load; they get VM-only file and
+    // process access here, so they never need to override gondolin's tools.
+    pi.events.emit(WORKSPACE_EVENT, createWorkspace(() => ensureVm(ctx), localCwd));
     // Start eagerly so the user sees errors early (missing qemu, etc.)
     await ensureVm(ctx);
   });
