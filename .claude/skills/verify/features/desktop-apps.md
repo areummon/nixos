@@ -8,7 +8,7 @@ Owners: `desktop/apps/firefox/firefox.nix`, `desktop/apps/vscode/vscode.nix`, `d
 
 - `firefox-profile`: `programs.firefox` with `configPath` under XDG, so the profile lives at `~/.config/mozilla/firefox/moka/` (`user.js`, `search.json.mozlz4`) with `~/.config/mozilla/firefox/profiles.ini`, not under `~/.mozilla`. Search is forced: Google by default, DuckDuckGo in private windows, Bing hidden. `user.js` holds the startup, new-tab, telemetry, and `browser.uiCustomization.state` toolbar prefs.
 - `firefox-browserpass`: `programs.browserpass` writes `~/.mozilla/native-messaging-hosts/com.github.browserpass.native.json`.
-- `firefox-mime`: `xdg.mimeApps.defaultApplications` maps `text/html`, `text/xml`, `http`, and `https` to `firefox.desktop`.
+- `firefox-mime`: `xdg.mimeApps.defaultApplications` maps `text/html`, `text/xml`, `x-scheme-handler/http`, and `x-scheme-handler/https` to `firefox.desktop`.
 - `vscode`: `programs.vscode` with `mutableExtensionsDir = true` and extension update checks on. The only generated file is `~/.vscode/extensions/.extensions-immutable.json`.
 - `mpv`: `~/.config/mpv/mpv.conf` sets `tone-mapping=bt.2390`, `target-prim=bt.709`, `target-trc=bt.1886`, `hdr-compute-peak=no`, and `video-output-levels=full`. Home-manager writes each value length-prefixed, as `tone-mapping=%7%bt.2390`, so grep for the key, not the literal `key=value`.
 - `learnharness`: `appimageTools.wrapType2` over the GitHub release AppImage (version and hash pinned in the file). The AppImage's `.desktop` file is installed as `learnharness.desktop` with `Exec=AppRun` rewritten to `learnharness`, plus its icons.
