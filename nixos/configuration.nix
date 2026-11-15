@@ -165,7 +165,6 @@
     alsa.enable = true;
     alsa.support32Bit = true;
     pulse.enable = true;
-    jack.enable = true;
     extraConfig.pipewire."pipewire" = {
       "context.properties" = {
         "default.clock.quantum" = 2048;
