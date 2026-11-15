@@ -8,6 +8,8 @@
   wayland.windowManager.hyprland = {
     enable = true;
     systemd.enable = false;
+    # Same portal build as programs.hyprland.portalPackage in the NixOS config
+    portalPackage = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-hyprland;
     xwayland.enable = true;
     settings = {};
     configType = "lua";
@@ -131,10 +133,6 @@
               vrr = 1,
           },
       })
-
-      ----------------
-      ---- RENDER ----
-      ----------------
 
       -----------------------
       ---- ANIMATIONS -------
@@ -736,15 +734,6 @@
       --------------------
       ---- LAYER RULES ---
       --------------------
-
-      -- bar-0
-      hl.layer_rule({
-          match = {
-              namespace = "bar-0",
-          },
-          blur = true,
-      })
-
 
       -- Wofi
       hl.layer_rule({

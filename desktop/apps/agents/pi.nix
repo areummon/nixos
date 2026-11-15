@@ -61,13 +61,13 @@
   '';
 in {
   # gondolin needs qemu_kvm; bwrap is kept for codex and opencode.
-  home.packages = [pkgs.llm-agents.pi] ++ (with pkgs.unstable; [nodejs bubblewrap ripgrep qemu_kvm]);
+  home.packages = [pkgs.llm-agents.pi] ++ (with pkgs; [nodejs bubblewrap ripgrep qemu_kvm]);
 
   # Fix the MCP SDK advisory without downgrading Pi plugins. The Bash parser
   # uses bundled WASM, so its native install script stays explicitly denied.
   home.activation.piNpmPolicy = lib.hm.dag.entryAfter ["writeBoundary"] ''
     if [ -z "''${DRY_RUN_CMD:-}" ]; then
-      export PATH="${pkgs.unstable.nodejs}/bin:$PATH"
+      export PATH="${pkgs.nodejs}/bin:$PATH"
       piNpmDir="${config.home.homeDirectory}/.pi/agent/npm"
       piPolicyChanged=$(node ${./pi-npm-policy.mjs} "$piNpmDir/package.json")
       if [ -n "$piPolicyChanged" ] || ! node -e 'process.exit(require(process.argv[1]).version === "1.32.1" ? 0 : 1)' "$piNpmDir/node_modules/@modelcontextprotocol/sdk/package.json" 2>/dev/null; then

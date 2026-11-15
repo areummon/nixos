@@ -11,10 +11,10 @@ Owner: `nixos/configuration.nix`. Hardware and disks: `nixos/hardware-configurat
 - `network`: NetworkManager with nameservers 1.1.1.1/8.8.8.8 and the openvpn plugin. Bluetooth is on at boot.
 - `audio`: PipeWire with alsa/pulse/jack and a quantum of 2048. `configure-sound-leds` turns off the mic LED when the sysfs path is writable.
 - `input`: fcitx5 for Wayland (Mozc, Hangul, GTK addon), `us` X11 layout, interception-tools caps2esc (`caps2esc -m 0`).
-- `virt`: podman (`dockerCompat`), VirtualBox host, distrobox.
+- `virt`: podman (`dockerCompat`), distrobox.
 - `desktop-services`: gvfs, power-profiles-daemon, upower, gnome-keyring with PAM, fwupd, flatpak, fstrim, zram ahead of the disk swap device from `hardware-configuration.nix`.
 - `session`: the Hyprland NixOS module with the pinned package and portal, `withUWSM`, zsh as the login shell, and `linger = true` for moka, so user units like hermes run without a login.
-- `inputs`: nixpkgs 26.05, unstable, home-manager release-26.05, hyprland, llm-agents (numtide/llm-agents.nix, no `follows`, served by cache.numtide.com), hermes-agent (pinned to a rev in `flake.nix`).
+- `inputs`: nixpkgs (nixos-unstable), nixpkgs-stable (26.05), home-manager master, hyprland, llm-agents (numtide/llm-agents.nix, no `follows`, served by cache.numtide.com), hermes-agent (module only; the Hermes packages come from `pkgs.llm-agents`).
 
 ## How to get to it (user POV)
 
@@ -35,8 +35,8 @@ Preconditions: `$V build` after the edit.
 
 - `hardware-configuration.nix` is machine-generated, so don't hand-edit it. It holds the filesystems, the disk swap, and the second LUKS device. The first LUKS device is in `configuration.nix`.
 - `system.stateVersion` and `home.stateVersion` are `24.11` on purpose. Never bump them as part of an upgrade.
-- `flake-registry = ""` only turns off the global registry download. NixOS still pins `nixpkgs` in `/etc/nix/registry.json` to this system's 26.05 source, so `nixpkgs#foo` works and resolves to stable, not unstable. For unstable, use `nix shell --inputs-from . nixpkgs-unstable#foo`.
+- `flake-registry = ""` only turns off the global registry download. NixOS still pins `nixpkgs` in `/etc/nix/registry.json` to this system's nixos-unstable source, so `nixpkgs#foo` works and resolves to unstable. For the release, use `nix shell --inputs-from . nixpkgs-stable#foo`.
 - `environment.pathsToLink` adds `/share/xdg-desktop-portal` and `/share/applications` (portal `.desktop` files). Both are required by the home-manager portal setup in `home.nix`. Removing it breaks the file chooser in flatpak apps.
 - `$V eval services.pipewire.extraConfig` fails as a whole: nixpkgs made `extraConfig.client-rt` a removed option that throws when read. Evaluate the sub-key you edited (`.pipewire`, `.pipewire-pulse`, `.client`).
 - `hermes-agent.url` is pinned to a rev (see the comment in `flake.nix`), so `nix flake update hermes-agent` changes nothing. To bump it, edit the rev in the URL, or drop `/<rev>` to follow main again.
-- `pkgs` is 26.05 stable, and `pkgs.unstable` comes from the overlay. Mixing both for one package, such as Papirus, causes `buildEnv` conflicts (see the comment in `theme.nix`).
+- `pkgs` is nixos-unstable, and `pkgs.stable` (26.05) comes from the overlay. Only fcitx5 with its addons (it breaks on unstable) and interception-tools are pinned to it, both through the overlay because their modules take no package option. Mixing both sets for one package in one profile causes `buildEnv` conflicts.

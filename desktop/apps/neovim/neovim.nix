@@ -6,12 +6,12 @@
 }: {
   programs.neovim = {
     enable = true;
-    package = pkgs.unstable.neovim-unwrapped;
+    package = pkgs.neovim-unwrapped;
     viAlias = true;
     vimAlias = true;
     withRuby = false;
     withPython3 = false;
-    plugins = with pkgs.unstable.vimPlugins; [
+    plugins = with pkgs.vimPlugins; [
       nvim-autopairs
       lualine-nvim
       everforest
@@ -40,8 +40,8 @@
       luasnip
     ];
     extraPackages = [
-      pkgs.unstable.ripgrep
-      pkgs.unstable.tinymist
+      pkgs.ripgrep
+      pkgs.tinymist
     ];
     initLua =
       builtins.readFile ./init.lua

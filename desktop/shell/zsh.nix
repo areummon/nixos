@@ -42,13 +42,13 @@
 
   programs.fzf = {
     enable = true;
-    package = pkgs.unstable.fzf;
+    package = pkgs.fzf;
     enableZshIntegration = true;
   };
 
   programs.eza = {
     enable = true;
-    package = pkgs.unstable.eza;
+    package = pkgs.eza;
     enableZshIntegration = true;
     icons = "auto";
     git = true;
@@ -56,7 +56,7 @@
 
   programs.zoxide = {
     enable = true;
-    package = pkgs.unstable.zoxide;
+    package = pkgs.zoxide;
     enableZshIntegration = true;
   };
 }

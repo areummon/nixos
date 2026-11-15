@@ -1,45 +1,26 @@
-# Edit this configuration file to define what should be installed on
-# your system.  Help is available in the configuration.nix(5) man page
-# and in the NixOS manual (accessible by running ‘nixos-help’).
 {
   inputs,
   outputs,
-  lib,
   config,
   pkgs,
   ...
 }: {
   imports = [
-    # Include the results of the hardware scan.
     ./hardware-configuration.nix
     inputs.home-manager.nixosModules.home-manager
   ];
 
   nixpkgs = {
     overlays = [
-      outputs.overlays.additions
-      outputs.overlays.modifications
-      outputs.overlays.unstable-packages
+      outputs.overlays.stable-packages
       outputs.overlays.llm-agents
-
-      # neovim-nightly-overlay.overlays.default
-
-      # (final: prev: {
-      #   hi = final.hello.overrideAttrs (oldAttrs: {
-      #     patches = [ ./change-hello-to-hi.patch ];
-      #   });
-      # })
     ];
-    config = {
-      allowUnfree = true;
-    };
+    config.allowUnfree = true;
   };
 
-  nix = let
-    flakeInputs = lib.filterAttrs (_: lib.isType "flake") inputs;
-  in {
+  nix = {
     settings = {
-      experimental-features = "nix-command flakes";
+      experimental-features = ["nix-command" "flakes"];
       flake-registry = "";
       # Workaround for https://github.com/NixOS/nix/issues/9574
       nix-path = config.nix.nixPath;
@@ -58,18 +39,14 @@
         "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
       ];
     };
-    # disable channels
     channel.enable = false;
 
-    # make flake registry and nix path match flake inputs
-    #registry = lib.mapAttrs (_: flake: {inherit flake;}) flakeInputs;
-    #nixPath = lib.mapAttrsToList (n: _: "${n}=flake:${n}") flakeInputs;
-
-    # Perform garbage collection weekly to maintain low disk usage
+    # Weekly garbage collection. The age must be in days: nix-collect-garbage
+    # rejects "1w" and the whole run fails.
     gc = {
       automatic = true;
       dates = "weekly";
-      options = "--delete-older-than 1w";
+      options = "--delete-older-than 7d";
     };
 
     # Optimize storage
@@ -82,23 +59,16 @@
   boot.loader.efi.canTouchEfiVariables = true;
   # Limit the number of generations to keep
   boot.loader.systemd-boot.configurationLimit = 10;
-  # boot.loader.grub.configurationLimit = 10;
 
   boot.initrd.luks.devices."luks-2a23b25c-f966-49a7-bd0b-fd56274e81f7".device = "/dev/disk/by-uuid/2a23b25c-f966-49a7-bd0b-fd56274e81f7";
-  networking.hostName = "nixos"; # Define your hostname.
-  # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
 
-  # Configure network proxy if necessary
-  # networking.proxy.default = "http://user:password@proxy:port/";
-  # networking.proxy.noProxy = "127.0.0.1,localhost,internal.domain";
-
-  # Enable networking
   networking = {
+    hostName = "nixos";
     networkmanager = {
       enable = true;
       insertNameservers = ["1.1.1.1" "8.8.8.8"];
       plugins = [
-        pkgs.unstable.networkmanager-openvpn
+        pkgs.networkmanager-openvpn
       ];
     };
   };
@@ -119,7 +89,7 @@
   i18n.inputMethod = {
     type = "fcitx5";
     enable = true;
-    fcitx5.addons = with pkgs; [
+    fcitx5.addons = with pkgs.stable; [
       fcitx5-mozc
       fcitx5-hangul
       fcitx5-gtk
@@ -134,38 +104,29 @@
     variant = "";
   };
 
-  # Define a user account. Don't forget to set a password with ‘passwd’.
-  users.users = {
-    # Add users
-    moka = {
-      isNormalUser = true;
-      description = "moka";
-      extraGroups = ["networkmanager" "wheel"];
-      openssh.authorizedKeys.keys = [
-        # TODO: Add your SSH public key(s) here, if you plan on using SSH to connect
-      ];
-      linger = true;
-    };
+  users.users.moka = {
+    isNormalUser = true;
+    description = "moka";
+    extraGroups = ["networkmanager" "wheel"];
+    shell = config.programs.zsh.package;
+    # Keeps the user manager, and so the Hermes gateway, running without a login
+    linger = true;
   };
+  programs.zsh.enable = true;
 
-  # List packages installed in system profile. To search, run:
-  # $ nix search wget
-  environment.systemPackages = with pkgs.unstable;
-    [
-      git
-      vim
-      wget
-      nautilus
-      distrobox
-    ]
-    ++ (with pkgs; [
-      ]);
+  environment.systemPackages = with pkgs; [
+    git
+    vim
+    wget
+    nautilus
+    distrobox
+  ];
 
   services.fwupd.enable = true;
 
-  # Hyrpland NixOS module
   programs.hyprland = {
     enable = true;
+    withUWSM = true;
     package = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
     portalPackage = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.xdg-desktop-portal-hyprland;
   };
@@ -173,10 +134,7 @@
     useGlobalPkgs = true;
     useUserPackages = true;
     extraSpecialArgs = {inherit inputs outputs;};
-    users = {
-      # Import your home-manager configuration
-      moka = import ../home-manager/home.nix;
-    };
+    users.moka = import ../home-manager/home.nix;
   };
   # Required with useUserPackages so the HM-declared xdg-desktop-portal
   # definitions (and portal-provided .desktop files) get linked into the
@@ -185,12 +143,6 @@
     "/share/xdg-desktop-portal"
     "/share/applications"
   ];
-
-  # UWSM configuration
-  programs.hyprland.withUWSM = true;
-
-  programs.zsh.enable = true;
-  users.users.moka.shell = pkgs.zsh;
 
   # Systemd configuration to turn off led of F4
   systemd.services.configure-sound-leds = rec {
@@ -223,17 +175,6 @@
     };
   };
 
-  # Some programs need SUID wrappers, can be configured further or are
-  # started in user sessions.
-  # programs.mtr.enable = true;
-  # programs.gnupg.agent = {
-  #   enable = true;
-  #   enableSSHSupport = true;
-  # };
-
-  # Enable the OpenSSH daemon.
-  # services.openssh.enable = true;
-
   # Desktop services: mounts/trash for nautilus, power profiles, battery info
   services.gvfs.enable = true;
   services.power-profiles-daemon.enable = true;
@@ -254,7 +195,7 @@
   # Flatpak configuration
   services.flatpak.enable = true;
   # Font configuration
-  fonts.packages = with pkgs.unstable; [
+  fonts.packages = with pkgs; [
     noto-fonts-cjk-sans
     noto-fonts-cjk-serif
   ];
@@ -265,7 +206,7 @@
   # Maps capslock to escape when pressed and ctrl when held down
   services.interception-tools = let
     itools = pkgs.interception-tools;
-    itools-caps = pkgs.interception-tools-plugins.caps2esc;
+    itools-caps = pkgs.stable.interception-tools-plugins.caps2esc;
   in {
     enable = true;
     plugins = [itools-caps];
@@ -278,21 +219,10 @@
     '';
   };
 
-  virtualisation = {
-    virtualbox.host.enable = true;
-    podman = {
-      enable = true;
-      dockerCompat = true;
-    };
+  virtualisation.podman = {
+    enable = true;
+    dockerCompat = true;
   };
-
-  users.extraGroups.vboxusers.members = ["moka"];
-
-  # Open ports in the firewall.
-  # networking.firewall.allowedTCPPorts = [ ... ];
-  # networking.firewall.allowedUDPPorts = [ ... ];
-  # Or disable the firewall altogether.
-  # networking.firewall.enable = false;
 
   # This value determines the NixOS release from which the default
   # settings for stateful data, like file locations and database versions

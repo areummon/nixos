@@ -32,11 +32,11 @@
   '';
 in {
   # Only used by the lock screen
-  home.packages = [pkgs.unstable.inter];
+  home.packages = [pkgs.inter];
 
   programs.hyprlock = {
     enable = true;
-    package = pkgs.unstable.hyprlock;
+    package = pkgs.hyprlock;
     settings = {
       general = {
         screencopy_mode = 0;

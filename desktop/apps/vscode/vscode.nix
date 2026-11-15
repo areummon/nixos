@@ -6,7 +6,7 @@
 }: {
   programs.vscode = {
     enable = true;
-    package = pkgs.unstable.vscode;
+    package = pkgs.vscode;
     mutableExtensionsDir = true;
     profiles.default.enableExtensionUpdateCheck = true;
   };

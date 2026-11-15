@@ -1,9 +1,4 @@
 {
-  pkgs,
-  lib,
-  config,
-  ...
-}: {
   imports = [
     ./claude.nix
     # Unused for now; re-add to reinstall Codex and its opencode-delegation profile.

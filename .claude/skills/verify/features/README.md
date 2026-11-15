@@ -5,7 +5,7 @@ This map is the maintained source for finding where each feature of moka's NixOS
 ## Where things live
 
 ```text
-flake.nix                       inputs (nixpkgs 26.05, unstable, home-manager, hyprland, llm-agents, hermes-agent)
+flake.nix                       inputs (nixpkgs unstable, nixpkgs-stable 26.05, home-manager, hyprland, llm-agents, hermes-agent)
                                 -> nixosConfigurations.nixos
 nixos/configuration.nix         system: boot, nix/gc, network, audio, input, users, virt, Hyprland+UWSM, zsh, HM wiring
 nixos/hardware-configuration.nix   generated; don't edit by hand
@@ -19,11 +19,10 @@ desktop/apps/waybar/            bar + scripts/ (backlight, bluetooth, network, p
 desktop/apps/wofi/              launcher (SUPER+R) and clipboard picker
 desktop/apps/{kitty,neovim,firefox,vscode,mpv,fd,learnharness}/   single-app modules
 desktop/theme/theme.nix         GTK/dconf dark theme, Papirus icons, McMojave cursor
-overlays/default.nix            pkgs.unstable and pkgs.llm-agents come from here
-pkgs/, modules/                 empty scaffolding (still wired as flake outputs and the additions overlay)
+overlays/default.nix            pkgs.stable and pkgs.llm-agents come from here
 ```
 
-Package-set conventions: most packages come from `pkgs.unstable.*`, and the agent CLIs (claude-code, claude-desktop, codex, opencode, pi, herdr-core, herdr-app) from `pkgs.llm-agents.*`, and system/home share one nixpkgs (`useGlobalPkgs`). Agents and the desktop are all home-manager modules, so their options live under `home-manager.users.moka.*` when you `$V eval`.
+Package-set conventions: most packages come from `pkgs.*` (nixos-unstable), a pinned few from `pkgs.stable.*` (see system.md), and the agent CLIs (claude-code, claude-desktop, codex, opencode, pi, herdr-core, herdr-app) from `pkgs.llm-agents.*`, and system/home share one nixpkgs (`useGlobalPkgs`). Agents and the desktop are all home-manager modules, so their options live under `home-manager.users.moka.*` when you `$V eval`.
 
 ## Baseline preconditions
 

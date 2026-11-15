@@ -1,6 +1,6 @@
 # Shell and terminal
 
-zsh (vi mode, autosuggestions, syntax highlighting, fzf/eza/zoxide/direnv) with a starship prompt, kitty (MesloLG, everforest dark hard), and neovim with plugins from unstable plus Lua config and LuaSnip snippets. zsh's login profile also starts the Hyprland session.
+zsh (vi mode, autosuggestions, syntax highlighting, fzf/eza/zoxide/direnv) with a starship prompt, kitty (MesloLG, everforest dark hard), and neovim with plugins plus Lua config and LuaSnip snippets. zsh's login profile also starts the Hyprland session.
 
 Owners: `desktop/shell/zsh.nix`, `desktop/shell/starship.nix`, `desktop/apps/kitty/kitty.nix`, `desktop/apps/neovim/` (`neovim.nix`, `init.lua`, `lua/`, `LuaSnip/`), direnv in `home-manager/home.nix`, `fd` (used by `sd` and Telescope) in `desktop/apps/fd/fd.nix`. Login shell: `users.users.moka.shell` in `nixos/configuration.nix`.
 

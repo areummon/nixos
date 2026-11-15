@@ -5,20 +5,65 @@
   ...
 }: let
   # nixpkgs Chromium for agent-browser (its own download fails on NixOS).
-  chromiumPath = "${pkgs.unstable.chromium}/bin/chromium";
+  chromiumPath = "${pkgs.chromium}/bin/chromium";
+
+  # Hermes comes prebuilt from llm-agents (cache.numtide.com); the hermes-agent
+  # flake input only supplies the home-manager module. That module expects two
+  # things of its own package that the llm-agents one lacks, bridged here.
+  hermes = pkgs.llm-agents.hermes-agent;
+
+  # 1. `hermesVenv`: a python3 that imports hermes_cli, used to stamp
+  # config.yaml. The hermes wrapper exports the interpreter and source root.
+  hermesVenv = pkgs.runCommand "hermes-venv" {} ''
+    mkdir -p $out/bin
+    eval "$(grep -E "^export HERMES_PYTHON(_SRC_ROOT)?=" ${hermes}/bin/hermes)"
+    test -x "$HERMES_PYTHON" && test -d "$HERMES_PYTHON_SRC_ROOT"
+    {
+      echo "#!${pkgs.runtimeShell}"
+      echo "PYTHONPATH=$HERMES_PYTHON_SRC_ROOT exec $HERMES_PYTHON \"\$@\""
+    } > $out/bin/python3
+    chmod +x $out/bin/python3
+  '';
+  hermesPackage = hermes.overrideAttrs (old: {
+    passthru = old.passthru // {inherit hermesVenv;};
+  });
+
+  # 2. A desktop package that takes the launcher environment (HERMES_HOME of
+  # the service) through `.override {extraEnv, extraRun}`.
+  hermesDesktop = lib.makeOverridable (
+    {
+      extraEnv ? {},
+      extraRun ? [],
+    }:
+      pkgs.symlinkJoin {
+        inherit (pkgs.llm-agents.hermes-desktop) pname version;
+        paths = [pkgs.llm-agents.hermes-desktop];
+        nativeBuildInputs = [pkgs.makeWrapper];
+        postBuild = ''
+          wrapProgram $out/bin/hermes-desktop ${lib.escapeShellArgs (
+            lib.concatLists (lib.mapAttrsToList (name: value: ["--set" name value]) extraEnv)
+            ++ lib.concatMap (line: ["--run" line]) extraRun
+          )}
+        '';
+      }
+  ) {};
 in {
   programs.hermes-agent = {
     enable = true;
     # Electron app; runs this same Hermes build against the service's HERMES_HOME.
-    desktop.enable = true;
+    desktop = {
+      enable = true;
+      package = hermesDesktop;
+    };
   };
 
   # Local browser automation for Hermes's browser_* tools.
-  home.packages = [pkgs.unstable.agent-browser pkgs.unstable.chromium];
+  home.packages = [pkgs.agent-browser pkgs.chromium];
   home.sessionVariables.AGENT_BROWSER_EXECUTABLE_PATH = chromiumPath;
 
   services.hermes-agent = {
     enable = true;
+    package = hermesPackage;
     gateway.enable = true;
     environmentFiles = [
       "${config.home.homeDirectory}/.secrets/openrouter.env"

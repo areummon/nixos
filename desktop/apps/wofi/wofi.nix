@@ -6,7 +6,7 @@
 }: {
   programs.wofi = {
     enable = true;
-    package = pkgs.unstable.wofi;
+    package = pkgs.wofi;
     settings = {
       show = "drun";
       term = "kitty";

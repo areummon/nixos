@@ -2,10 +2,12 @@
   description = "My nix flake configuration to manage the system";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05"; # NixOS release channel
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable"; # NixOS unstable channel
+    # Base package set and NixOS modules
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # pkgs.stable: packages that break on unstable (fcitx5)
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
     home-manager = {
-      url = "github:nix-community/home-manager/release-26.05"; # Home Manager release channel
+      url = "github:nix-community/home-manager"; # master tracks nixos-unstable
       inputs.nixpkgs.follows = "nixpkgs";
     };
     hyprland.url = "github:hyprwm/Hyprland";
@@ -13,7 +15,7 @@
     llm-agents.url = "github:numtide/llm-agents.nix";
     # Pinned: upstream main (2026-11-06 npm->pnpm switch) has a stale hermes-tui
     # pnpmDeps hash. Drop the /rev to follow main again once that is fixed.
-    hermes-agent.url = "github:NousResearch/hermes-agent/aa74e184ea779994af642ab4f888e10a95415d90";
+    hermes-agent.url = "github:NousResearch/hermes-agent";
   };
 
   outputs = {
@@ -22,39 +24,16 @@
     ...
   } @ inputs: let
     inherit (self) outputs;
-    # Supported systems for your flake packages, shell, etc.
-    systems = [
-      "x86_64-linux"
-    ];
-    # This is a function that generates an attribute by calling a function you
-    # pass to it, with each system as an argument
-    forAllSystems = nixpkgs.lib.genAttrs systems;
+    system = "x86_64-linux";
   in {
-    # Your custom packages
-    # Accessible through 'nix build', 'nix shell', etc
-    packages = forAllSystems (system: import ./pkgs nixpkgs.legacyPackages.${system});
-    # Formatter for your nix files, available through 'nix fmt'
-    # Other options beside 'alejandra' include 'nixpkgs-fmt'
-    formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.alejandra);
-    # Your custom packages and modifications, exported as overlays
+    # `nix fmt`
+    formatter.${system} = nixpkgs.legacyPackages.${system}.alejandra;
+    # pkgs.stable and pkgs.llm-agents
     overlays = import ./overlays {inherit inputs;};
-    # Reusable nixos modules you might want to export
-    # These are usually stuff you would upstream into nixpkgs
-    nixosModules = import ./modules/nixos;
-    # Reusable home-manager modules you might want to export
-    # These are usually stuff you would upstream into home-manager
-    homeModules = import ./modules/home-manager;
 
-    # NixOS configuration entrypoint
-    # Available through 'nixos-rebuild --flake .#your-hostname'
-    nixosConfigurations = {
-      nixos = nixpkgs.lib.nixosSystem {
-        specialArgs = {inherit inputs outputs;};
-        modules = [
-          # > Our main nixos configuration file <
-          ./nixos/configuration.nix
-        ];
-      };
+    nixosConfigurations.nixos = nixpkgs.lib.nixosSystem {
+      specialArgs = {inherit inputs outputs;};
+      modules = [./nixos/configuration.nix];
     };
   };
 }

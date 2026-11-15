@@ -6,7 +6,7 @@
 }: {
   services.hyprsunset = {
     enable = true;
-    package = pkgs.unstable.hyprsunset;
+    package = pkgs.hyprsunset;
     settings = {
       max-gamma = 150;
       profile = [
