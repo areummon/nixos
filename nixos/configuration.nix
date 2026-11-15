@@ -25,7 +25,6 @@
       # Workaround for https://github.com/NixOS/nix/issues/9574
       nix-path = config.nix.nixPath;
 
-      # Binary caches
       substituters = [
         "https://cache.nixos.org"
         "https://hyprland.cachix.org"
@@ -49,15 +48,11 @@
       options = "--delete-older-than 7d";
     };
 
-    # Optimize storage
-    # https://nixos.org/manual/nix/stable/command-ref/conf-file.html#conf-auto-optimise-store
     settings.auto-optimise-store = true;
   };
 
-  # Bootloader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
-  # Limit the number of generations to keep
   boot.loader.systemd-boot.configurationLimit = 10;
 
   boot.initrd.luks.devices."luks-2a23b25c-f966-49a7-bd0b-fd56274e81f7".device = "/dev/disk/by-uuid/2a23b25c-f966-49a7-bd0b-fd56274e81f7";
@@ -73,19 +68,15 @@
     };
   };
 
-  # bluetooth configuration
   hardware.bluetooth = {
     enable = true;
     powerOnBoot = true;
   };
 
-  # Set your time zone.
   time.timeZone = "America/Mexico_City";
 
-  # Select internationalisation properties.
   i18n.defaultLocale = "en_US.UTF-8";
 
-  # fcitx configuration
   i18n.inputMethod = {
     type = "fcitx5";
     enable = true;
@@ -98,7 +89,6 @@
   };
   services.xserver.desktopManager.runXdgAutostartIfNone = true;
 
-  # Configure keymap in X11
   services.xserver.xkb = {
     layout = "us";
     variant = "";
@@ -158,7 +148,6 @@
     '';
   };
 
-  # Pipewire configuration
   security.rtkit.enable = true;
   services.pipewire = {
     enable = true;
@@ -188,12 +177,9 @@
   services.fstrim.enable = true;
   zramSwap.enable = true;
 
-  # Hyprlock pam conf
   security.pam.services.hyprlock = {};
 
-  # Flatpak configuration
   services.flatpak.enable = true;
-  # Font configuration
   fonts.packages = with pkgs; [
     noto-fonts-cjk-sans
     noto-fonts-cjk-serif
