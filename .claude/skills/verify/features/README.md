@@ -22,7 +22,7 @@ desktop/theme/theme.nix         GTK/dconf dark theme, Papirus icons, McMojave cu
 overlays/default.nix            pkgs.stable and pkgs.llm-agents come from here
 ```
 
-Package-set conventions: most packages come from `pkgs.*` (nixos-unstable), a pinned few from `pkgs.stable.*` (see system.md), and the agent CLIs (claude-code, claude-desktop, codex, opencode, pi, herdr-core, herdr-app) from `pkgs.llm-agents.*`, and system/home share one nixpkgs (`useGlobalPkgs`). Agents and the desktop are all home-manager modules, so their options live under `home-manager.users.moka.*` when you `$V eval`.
+Package-set conventions: most packages come from `pkgs.*` (nixos-unstable), a pinned few from `pkgs.stable.*` (see system.md), and the agent CLIs (claude-code, claude-desktop, codex, opencode, pi, herdr-core, herdr-app, hermes-agent, hermes-desktop) from `pkgs.llm-agents.*`, and system/home share one nixpkgs (`useGlobalPkgs`). Agents and the desktop are all home-manager modules, so their options live under `home-manager.users.moka.*` when you `$V eval`.
 
 ## Baseline preconditions
 
