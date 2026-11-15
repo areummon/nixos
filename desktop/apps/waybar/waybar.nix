@@ -671,12 +671,13 @@ in {
     '';
   };
 
-  # Scripts
-  home.file = {
-    ".config/waybar/scripts/backlight".source = ./scripts/backlight;
-    ".config/waybar/scripts/bluetooth".source = ./scripts/bluetooth;
-    ".config/waybar/scripts/network".source = ./scripts/network;
-    ".config/waybar/scripts/power".source = ./scripts/power;
-    ".config/waybar/scripts/volume".source = ./scripts/volume;
-  };
+  # pactl for scripts/volume; pipewire-pulse answers it
+  home.packages = [pkgs.pulseaudio];
+
+  # Click and scroll handlers; waybar executes them directly
+  home.file = lib.genAttrs' ["backlight" "bluetooth" "network" "power" "volume"] (name:
+    lib.nameValuePair ".config/waybar/scripts/${name}" {
+      source = ./scripts/${name};
+      executable = true;
+    });
 }
