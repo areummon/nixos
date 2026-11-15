@@ -2,7 +2,7 @@
 
 Claude Code and Claude Desktop, OpenCode with a bubblewrap-sandboxed launcher (`opencode-sandboxed`), the Herdr app, and the shared `~/AGENTS.md` rules file that agent sessions under `~` read (except inside `opencode-sandboxed`, which can't see it). Codex and its network-enabled delegation profile are dormant: `codex.nix` stays in the repo but isn't imported.
 
-Owners: `desktop/apps/agents/claude.nix`, `opencode.nix`, `herdr.nix`, `agents-md.nix`; dormant: `codex.nix` (re-add it in `agents/default.nix`). Claude Code, Claude Desktop, Codex, OpenCode and Herdr come from `pkgs.llm-agents` (the `llm-agents` overlay in `overlays/default.nix`). Hermes stays on its own flake: its home-manager module needs `hermesVenv` and `.override` hooks that the llm-agents `hermes-agent` lacks.
+Owners: `desktop/apps/agents/claude.nix`, `opencode.nix`, `herdr.nix`, `agents-md.nix`; dormant: `codex.nix` (re-add it in `agents/default.nix`). Claude Code, Claude Desktop, Codex, OpenCode and Herdr come from `pkgs.llm-agents` (the `llm-agents` overlay in `overlays/default.nix`). The Hermes packages come from there too; only its home-manager module comes from the `hermes-agent` flake (see agents-hermes.md).
 
 ## Sub-features
 
@@ -39,6 +39,6 @@ Preconditions: `$V build` after the edit. Below, `B="$(cat $($V run)/toplevel.pa
 - `ls` is a zsh alias for eza, which prints the profile's symlinked binaries as `name -> target`, so `ls ... | grep -x` matches nothing. Use `command ls`.
 - Dropping the `claude-desktop` wrapper, or giving the desktop entry an absolute store path, silently moves Claude Desktop back to the "basic" password store.
 - OpenCode gets no API key from the environment. The default models are the free Zen `opencode/deepseek-v4.1-flash-free` (no login), and OpenRouter models use the key OpenCode saved in `~/.local/share/opencode/auth.json` (`opencode auth list`). The same holds inside `opencode-sandboxed`, which mounts that dir.
-- When Codex is re-enabled: the base `~/.codex/config.toml` isn't managed by Nix and sets no sandbox or network keys, so the "normal profile stays network-disabled" comment in `codex.nix` rests on Codex's own workspace-write default. Codex's Linux sandbox needs `bwrap` on PATH, which only `pi.nix` installs (`pkgs.unstable.bubblewrap`).
+- When Codex is re-enabled: the base `~/.codex/config.toml` isn't managed by Nix and sets no sandbox or network keys, so the "normal profile stays network-disabled" comment in `codex.nix` rests on Codex's own workspace-write default. Codex's Linux sandbox needs `bwrap` on PATH, which only `pi.nix` installs (`pkgs.bubblewrap`).
 - `~/AGENTS.md` is a home-manager symlink. Editing it in place fails, so edit `agents-md.nix` instead.
 - This repo's own Claude Code settings live outside Nix in `~/.claude/` (for example `pstack-models.md`), not in this flake.

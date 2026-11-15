@@ -1,15 +1,15 @@
 # System
 
-The NixOS layer: systemd-boot with LUKS, flakes with binary caches and weekly GC, NetworkManager (with OpenVPN), bluetooth, PipeWire with a fixed 2048 quantum, fcitx5 (Mozc, Hangul), caps-to-escape/ctrl, flatpak, podman (docker-compatible), VirtualBox, gnome-keyring, and zram. Home-manager runs as a NixOS module from here.
+The NixOS layer: systemd-boot with LUKS, flakes with binary caches and weekly GC, NetworkManager (with OpenVPN), bluetooth, PipeWire with a fixed 2048 quantum, fcitx5 (Mozc, Hangul), caps-to-escape/ctrl, flatpak, podman (docker-compatible), gnome-keyring, and zram. Home-manager runs as a NixOS module from here.
 
 Owner: `nixos/configuration.nix`. Hardware and disks: `nixos/hardware-configuration.nix` (generated). Overlays: `overlays/default.nix`. Inputs and pins: `flake.nix`, `flake.lock`.
 
 ## Sub-features
 
-- `nix-settings`: substituters, `auto-optimise-store`, `gc` weekly with `--delete-older-than 1w`, channels off.
+- `nix-settings`: substituters, `auto-optimise-store`, `gc` weekly with `--delete-older-than 7d` (`1w` is rejected and fails the run), channels off.
 - `boot`: systemd-boot, keeps 10 generations, two LUKS devices (one in `configuration.nix`, one in `hardware-configuration.nix`).
 - `network`: NetworkManager with nameservers 1.1.1.1/8.8.8.8 and the openvpn plugin. Bluetooth is on at boot.
-- `audio`: PipeWire with alsa/pulse/jack and a quantum of 2048. `configure-sound-leds` turns off the mic LED when the sysfs path is writable.
+- `audio`: PipeWire with alsa/pulse and a quantum of 2048. `configure-sound-leds` turns off the mic LED when the sysfs path is writable.
 - `input`: fcitx5 for Wayland (Mozc, Hangul, GTK addon), `us` X11 layout, interception-tools caps2esc (`caps2esc -m 0`).
 - `virt`: podman (`dockerCompat`), distrobox.
 - `desktop-services`: gvfs, power-profiles-daemon, upower, gnome-keyring with PAM, fwupd, flatpak, fstrim, zram ahead of the disk swap device from `hardware-configuration.nix`.
@@ -38,5 +38,5 @@ Preconditions: `$V build` after the edit.
 - `flake-registry = ""` only turns off the global registry download. NixOS still pins `nixpkgs` in `/etc/nix/registry.json` to this system's nixos-unstable source, so `nixpkgs#foo` works and resolves to unstable. For the release, use `nix shell --inputs-from . nixpkgs-stable#foo`.
 - `environment.pathsToLink` adds `/share/xdg-desktop-portal` and `/share/applications` (portal `.desktop` files). Both are required by the home-manager portal setup in `home.nix`. Removing it breaks the file chooser in flatpak apps.
 - `$V eval services.pipewire.extraConfig` fails as a whole: nixpkgs made `extraConfig.client-rt` a removed option that throws when read. Evaluate the sub-key you edited (`.pipewire`, `.pipewire-pulse`, `.client`).
-- `hermes-agent.url` is pinned to a rev (see the comment in `flake.nix`), so `nix flake update hermes-agent` changes nothing. To bump it, edit the rev in the URL, or drop `/<rev>` to follow main again.
-- `pkgs` is nixos-unstable, and `pkgs.stable` (26.05) comes from the overlay. Only fcitx5 with its addons (it breaks on unstable) and interception-tools are pinned to it, both through the overlay because their modules take no package option. Mixing both sets for one package in one profile causes `buildEnv` conflicts.
+- `hermes-agent.url` follows upstream main and supplies only the home-manager module, so `nix flake update hermes-agent` moves the module while the Hermes version moves with `llm-agents`.
+- `pkgs` is nixos-unstable, and `pkgs.stable` (26.05) comes from the overlay. Only fcitx5 (it breaks on unstable) and interception-tools are pinned to it. `fcitx5-with-addons` and `interception-tools` are swapped in the overlay because their modules take no package option, and the fcitx5 addons and the caps2esc plugin are named as `pkgs.stable.*` in `configuration.nix`. Mixing both sets for one package in one profile causes `buildEnv` conflicts.
