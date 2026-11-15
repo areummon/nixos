@@ -64,21 +64,17 @@
     config.hyprland.default = ["hyprland" "gtk"];
   };
 
-  # Configuration for Flatpak
   home.sessionPath = [
     "$HOME/.local/share/flatpak/exports/bin"
   ];
 
-  # Line for fonts to work
   fonts.fontconfig.enable = true;
 
-  # Enable home-manager and git
   programs.home-manager.enable = true;
 
   # Nicely reload system units when changing configs
   systemd.user.startServices = "sd-switch";
 
-  # Git configuration
   programs.git = {
     enable = true;
     settings = {
@@ -96,7 +92,6 @@
     gitCredentialHelper.enable = true;
   };
 
-  # nix-direnv configuration for programming environments
   programs = {
     direnv = {
       enable = true;

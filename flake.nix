@@ -13,8 +13,7 @@
     hyprland.url = "github:hyprwm/Hyprland";
     # Agent CLIs, tested against its own pinned nixpkgs-unstable; no follows so cache.numtide.com hits.
     llm-agents.url = "github:numtide/llm-agents.nix";
-    # Pinned: upstream main (2026-11-06 npm->pnpm switch) has a stale hermes-tui
-    # pnpmDeps hash. Drop the /rev to follow main again once that is fixed.
+    # Home-manager module only; the packages come from llm-agents
     hermes-agent.url = "github:NousResearch/hermes-agent";
   };
 
