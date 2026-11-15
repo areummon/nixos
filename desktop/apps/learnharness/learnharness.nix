@@ -6,7 +6,7 @@
     url = "https://github.com/amosblomqvist/learnharness/releases/download/v${version}/LearnHarness-${version}-x86_64.AppImage";
     hash = "sha256-n8aA23BE2DD7yePDAbuWcLc29jo22bYivln2toh3DNg=";
   };
-  contents = pkgs.appimageTools.extractType2 {inherit pname version src;};
+  contents = pkgs.appimageTools.extract {inherit pname version src;};
 in {
   home.packages = [
     (pkgs.appimageTools.wrapType2 {

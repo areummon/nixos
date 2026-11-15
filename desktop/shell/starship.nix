@@ -6,7 +6,7 @@
 }: {
   programs.starship = {
     enable = true;
-    package = pkgs.unstable.starship;
+    package = pkgs.starship;
     enableZshIntegration = true;
     settings = {
       format = lib.concatStrings [

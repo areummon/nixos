@@ -1,15 +1,10 @@
 {
   inputs,
-  outputs,
-  lib,
   config,
   pkgs,
   ...
 }: {
   imports = [
-    # If you want to use modules your own flake exports (from modules/home-manager): outputs.homeManagerModules.example
-    # Or modules exported from other flakes (such as nix-colors):
-    # inputs.nix-colors.homeManagerModules.default
     inputs.hyprland.homeManagerModules.default
     inputs.hermes-agent.homeManagerModules.default
 
@@ -21,8 +16,8 @@
     homeDirectory = "/home/moka";
   };
 
-  home.packages = with pkgs.unstable; [
-    pkgs.anki
+  home.packages = with pkgs; [
+    anki
     obsidian
     brightnessctl
     bluez-tools
@@ -37,16 +32,13 @@
     rclone
     zathura
     sioyek
-    hyprshot
+    # Built against the running compositor, not nixpkgs' Hyprland
+    (hyprshot.override {hyprland = inputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;})
     # flatpak
     libsecret
     # fonts
-    font-awesome
-    powerline-fonts
-    powerline-symbols
+    # iosevka and fira-code are kitty's fallback glyph fonts
     iosevka
-    fira-code-symbols
-    nerd-fonts.jetbrains-mono
     nerd-fonts.fira-code
     nerd-fonts.symbols-only
     nerd-fonts.meslo-lg
@@ -100,7 +92,7 @@
   # GitHub CLI; also registers gh as git's credential helper for github.com
   programs.gh = {
     enable = true;
-    package = pkgs.unstable.gh;
+    package = pkgs.gh;
     gitCredentialHelper.enable = true;
   };
 
@@ -108,7 +100,7 @@
   programs = {
     direnv = {
       enable = true;
-      package = pkgs.unstable.direnv;
+      package = pkgs.direnv;
       enableBashIntegration = true;
       enableZshIntegration = true;
       nix-direnv.enable = true;

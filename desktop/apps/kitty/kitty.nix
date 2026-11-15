@@ -6,7 +6,7 @@
 }: {
   programs.kitty = {
     enable = true;
-    package = pkgs.unstable.kitty;
+    package = pkgs.kitty;
     font.name = "MesloLG";
 
     themeFile = "everforest_dark_hard";

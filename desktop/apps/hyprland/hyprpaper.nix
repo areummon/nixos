@@ -6,7 +6,7 @@
 }: {
   services.hyprpaper = {
     enable = true;
-    package = pkgs.unstable.hyprpaper;
+    package = pkgs.hyprpaper;
     settings = {
       splash = false;
       wallpaper = [

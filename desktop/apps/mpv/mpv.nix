@@ -6,7 +6,7 @@
 }: {
   programs.mpv = {
     enable = true;
-    package = pkgs.unstable.mpv;
+    package = pkgs.mpv;
     config = {
       hdr-compute-peak = "no";
       tone-mapping = "bt.2390";

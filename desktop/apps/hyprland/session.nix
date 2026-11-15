@@ -9,13 +9,13 @@
   # Graphical polkit prompts (nautilus mounts, NetworkManager, ...)
   services.hyprpolkitagent = {
     enable = true;
-    package = pkgs.unstable.hyprpolkitagent;
+    package = pkgs.hyprpolkitagent;
   };
 
   # Clipboard history, picked with SUPER+SHIFT+V (wofi --dmenu)
   services.cliphist = {
     enable = true;
-    package = pkgs.unstable.cliphist;
+    package = pkgs.cliphist;
     allowImages = true;
   };
 
@@ -23,7 +23,7 @@
   # SUPER+N or the waybar menu icon toggles the notification center
   services.swaync = {
     enable = true;
-    package = pkgs.unstable.swaynotificationcenter;
+    package = pkgs.swaynotificationcenter;
     settings = {
       positionX = "right";
       positionY = "top";

@@ -1,9 +1,4 @@
 {
-  pkgs,
-  lib,
-  config,
-  ...
-}: {
   imports = [
     ./kitty/kitty.nix
     ./firefox/firefox.nix

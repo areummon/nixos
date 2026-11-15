@@ -4,9 +4,7 @@
   config,
   ...
 }: let
-  # Same source as home.packages (unstable) — two different Papirus versions
-  # in the same profile make buildEnv fail with conflicting subpaths.
-  papirus = pkgs.unstable.papirus-icon-theme;
+  papirus = pkgs.papirus-icon-theme;
   # McMojave isn't packaged in nixpkgs; it's a hyprcursor theme installed by
   # hand in ~/.local/share/icons/McMojave (no xcursor files).
   cursor = {

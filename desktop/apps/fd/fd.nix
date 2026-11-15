@@ -6,7 +6,7 @@
 }: {
   programs.fd = {
     enable = true;
-    package = pkgs.unstable.fd;
+    package = pkgs.fd;
     hidden = true;
     ignores = [
       ".cache/"

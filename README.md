@@ -8,9 +8,7 @@ Personal NixOS and Home Manager configuration using flakes.
 nixos/          System-level configuration
 home-manager/   User-level configuration
 desktop/        Hyprland, applications, shell, and theme
-modules/        Reusable NixOS and Home Manager modules
-overlays/       Package overlays
-pkgs/           Custom packages
+overlays/       pkgs.stable and pkgs.llm-agents
 flake.nix      Flake inputs and system outputs
 ```
 

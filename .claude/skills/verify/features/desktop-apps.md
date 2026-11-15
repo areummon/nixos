@@ -1,6 +1,6 @@
 # Desktop apps
 
-Firefox (profile `moka` with forced search engines, privacy and telemetry prefs, a fixed toolbar, and browserpass), VS Code (extensions stay mutable), mpv (SDR tone-mapping for HDR video), all three from unstable, and LearnHarness, a pinned upstream AppImage.
+Firefox (profile `moka` with forced search engines, privacy and telemetry prefs, a fixed toolbar, and browserpass), VS Code (extensions stay mutable), mpv (SDR tone-mapping for HDR video), and LearnHarness, a pinned upstream AppImage.
 
 Owners: `desktop/apps/firefox/firefox.nix`, `desktop/apps/vscode/vscode.nix`, `desktop/apps/mpv/mpv.nix`, `desktop/apps/learnharness/learnharness.nix`, imported from `desktop/apps/default.nix`.
 
