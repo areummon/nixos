@@ -17,6 +17,7 @@
   };
 
   home.packages = with pkgs; [
+    pkgs.llm-agents.antigravity-cli
     anki
     obsidian
     brightnessctl
