@@ -7,6 +7,7 @@
   imports = [
     inputs.hyprland.homeManagerModules.default
     inputs.hermes-agent.homeManagerModules.default
+    inputs.shotdrop.homeManagerModules.default
 
     ../desktop
   ];
@@ -75,6 +76,22 @@
 
   # Nicely reload system units when changing configs
   systemd.user.startServices = "sd-switch";
+
+  # ShotDrop: watches ~/Pictures/Screenshots, arms on capture, sends to iPad via LocalSend on hotkey
+  services.shotdrop = {
+    enable = true;
+    settings = {
+      watch_dir = "~/Pictures/Screenshots";
+      arm_timeout_sec = 20;
+      transport = "localsend";
+      localsend = {
+        target_name = "Effie Makgeolli Banger";
+      };
+      web = {
+        enabled = false;
+      };
+    };
+  };
 
   programs.git = {
     enable = true;
