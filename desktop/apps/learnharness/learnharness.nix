@@ -1,10 +1,10 @@
 # LearnHarness AppImage; to update: bump version, set hash = "", rebuild, paste hash from error.
 {pkgs, ...}: let
   pname = "learnharness";
-  version = "0.4.1";
+  version = "0.7.0";
   src = pkgs.fetchurl {
     url = "https://github.com/amosblomqvist/learnharness/releases/download/v${version}/LearnHarness-${version}-x86_64.AppImage";
-    hash = "sha256-n8aA23BE2DD7yePDAbuWcLc29jo22bYivln2toh3DNg=";
+    hash = "sha256-dyteBNOAy+inKnXb/yaa62pH9NRFJxGx2oBZqHIGdhM=";
   };
   contents = pkgs.appimageTools.extract {inherit pname version src;};
 in {
