@@ -15,6 +15,11 @@
     llm-agents.url = "github:numtide/llm-agents.nix";
     # Home-manager module only; the packages come from llm-agents
     hermes-agent.url = "github:NousResearch/hermes-agent";
+    # Screenshot-to-iPad transfer daemon (LocalSend + LAN Web Push)
+    shotdrop = {
+      url = "github:areummon/shotdrop";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {

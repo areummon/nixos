@@ -342,6 +342,13 @@
       )
 
 
+      -- Send armed screenshot to iPad (ShotDrop)
+      hl.bind(
+          mainMod .. " + SHIFT + I",
+          hl.dsp.exec_cmd("shotdrop trigger")
+      )
+
+
       -- Terminal
       hl.bind(
           mainMod .. " + Q",
