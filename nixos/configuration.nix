@@ -66,10 +66,6 @@
         pkgs.networkmanager-openvpn
       ];
     };
-    # ShotDrop: allow LocalSend UDP multicast discovery replies (no open TCP ports)
-    firewall = {
-      allowedUDPPorts = [53317];
-    };
   };
 
   hardware.bluetooth = {
